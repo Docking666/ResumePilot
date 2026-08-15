@@ -48,6 +48,11 @@ android {
         kotlinCompilerExtensionVersion = "1.5.8"
     }
 
+    // Room schema 导出：供未来版本编写正式 Migration（替换 destructive fallback）
+    ksp {
+        arg("room.schemaLocation", "$projectDir/schemas")
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -92,6 +97,10 @@ dependencies {
 
     // YAML parsing
     implementation("com.charleskorn.kaml:kaml:0.55.0")
+
+    // Unit tests (JVM)
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlin:kotlin-test:1.9.22")
 
     // Debug
     debugImplementation("androidx.compose.ui:ui-tooling")

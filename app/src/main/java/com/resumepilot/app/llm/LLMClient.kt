@@ -395,7 +395,7 @@ class LLMClient(val config: LLMConfig) {
 
     private fun parseOpenAIResponse(response: Response): String {
         val body = response.body?.string() ?: throw Exception("Empty response")
-        if (!response.isSuccessful) throw Exception("API Error: $body")
+        if (!response.isSuccessful) throw Exception(friendlyHttpError(response.code, body))
 
         val json = JSONObject(body)
         return json.getJSONArray("choices")
@@ -406,7 +406,7 @@ class LLMClient(val config: LLMConfig) {
 
     private fun parseAnthropicResponse(response: Response): String {
         val body = response.body?.string() ?: throw Exception("Empty response")
-        if (!response.isSuccessful) throw Exception("API Error: $body")
+        if (!response.isSuccessful) throw Exception(friendlyHttpError(response.code, body))
 
         val json = JSONObject(body)
         return json.getJSONArray("content")
@@ -416,7 +416,7 @@ class LLMClient(val config: LLMConfig) {
 
     private fun parseGeminiResponse(response: Response): String {
         val body = response.body?.string() ?: throw Exception("Empty response")
-        if (!response.isSuccessful) throw Exception("API Error: $body")
+        if (!response.isSuccessful) throw Exception(friendlyHttpError(response.code, body))
 
         val json = JSONObject(body)
         return json.getJSONArray("candidates")
@@ -425,6 +425,19 @@ class LLMClient(val config: LLMConfig) {
             .getJSONArray("parts")
             .getJSONObject(0)
             .getString("text")
+    }
+
+    /**
+     * 将 HTTP 错误码转换为对用户友好的提示（业界最佳实践：暴露可操作信息而非原始堆栈）
+     */
+    private fun friendlyHttpError(code: Int, body: String): String {
+        return when (code) {
+            401, 403 -> "API Key 无效或已过期（$code），请到「设置」页检查 Key 与 Base URL"
+            404 -> "接口地址不存在（404），请检查 Base URL / 模型名称配置"
+            429 -> "请求过于频繁（429），请稍后重试或降低任务频率"
+            in 500..599 -> "LLM 服务暂时不可用（$code），请稍后重试"
+            else -> "LLM 请求失败（$code）: ${body.take(200)}"
+        }
     }
 
     /**

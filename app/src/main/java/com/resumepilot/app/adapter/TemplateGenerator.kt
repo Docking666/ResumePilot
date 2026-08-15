@@ -220,120 +220,16 @@ class TemplateGenerator(private val llmClient: LLMClient) {
         appPackage: String,
         analyses: List<Pair<GuidePage, ScreenshotAnalysis>>
     ): PlatformTemplate {
-        val cleaned = yamlContent
-            .replace("```yaml", "")
-            .replace("```yml", "")
-            .replace("```", "")
-            .trim()
-
-        // 从 YAML 中提取 element_mapping 和 workflows
-        val elementMapping = parseElementMapping(cleaned)
-        val workflows = parseWorkflows(cleaned)
+        // 使用 kaml 正规解析（修复原手写解析导致 workflows 恒为空的问题）
+        val parsed = TemplateYamlParser.parse(yamlContent)
 
         return PlatformTemplate(
             platformName = platformName,
             appPackage = appPackage,
             screenshots = analyses.map { it.second },
-            workflows = workflows,
-            elementMapping = elementMapping
+            workflows = parsed.workflows,
+            elementMapping = parsed.elementMapping
         )
-    }
-
-    private fun parseElementMapping(yaml: String): Map<String, String> {
-        val mapping = mutableMapOf<String, String>()
-        val lines = yaml.lines()
-        var inMapping = false
-
-        for (line in lines) {
-            val trimmed = line.trim()
-            when {
-                trimmed == "element_mapping:" -> inMapping = true
-                inMapping && trimmed.startsWith("workflows:") -> break
-                inMapping && trimmed.contains(":") && !trimmed.startsWith("#") -> {
-                    val colonIndex = trimmed.indexOf(':')
-                    if (colonIndex > 0) {
-                        val key = trimmed.substring(0, colonIndex).trim()
-                        val value = trimmed.substring(colonIndex + 1).trim()
-                        if (key.isNotBlank() && value.isNotBlank()) {
-                            mapping[key] = value
-                        }
-                    }
-                }
-            }
-        }
-        return mapping
-    }
-
-    private fun parseWorkflows(yaml: String): Map<String, WorkflowDef> {
-        val workflows = mutableMapOf<String, WorkflowDef>()
-        val lines = yaml.lines()
-        var inWorkflows = false
-        var currentWorkflowName: String? = null
-        var currentSteps = mutableListOf<WorkflowStep>()
-        var currentParams = mutableListOf<String>()
-        var currentDescription = ""
-        var inSteps = false
-
-        for (line in lines) {
-            val trimmed = line.trim()
-            when {
-                trimmed == "workflows:" -> {
-                    inWorkflows = true
-                }
-                inWorkflows && trimmed.startsWith("- id:") -> {
-                    // 步骤开始——收集步骤属性
-                    inSteps = true
-                }
-                inWorkflows && inSteps -> {
-                    if (trimmed.contains(":")) {
-                        val colonIndex = trimmed.indexOf(':')
-                        val key = trimmed.substring(0, colonIndex).trim()
-                        val value = trimmed.substring(colonIndex + 1).trim().removeSurrounding("\"")
-                        when (key) {
-                            "id" -> {
-                                // 保存上一步
-                                // 新的步骤会在下一个 - id: 时创建
-                            }
-                            "action" -> {
-                                // 收集步骤属性
-                            }
-                        }
-                    }
-                }
-                inWorkflows && !inSteps && trimmed.contains(":") && !trimmed.startsWith(" ") -> {
-                    // 保存当前工作流
-                    currentWorkflowName?.let { name ->
-                        if (currentSteps.isNotEmpty()) {
-                            workflows[name] = WorkflowDef(
-                                name = name,
-                                description = currentDescription,
-                                steps = currentSteps.toList(),
-                                requiredParams = currentParams.toList()
-                            )
-                        }
-                    }
-                    // 新工作流开始
-                    val colonIndex = trimmed.indexOf(':')
-                    currentWorkflowName = trimmed.substring(0, colonIndex).trim()
-                    currentSteps.clear()
-                    currentParams.clear()
-                    currentDescription = ""
-                    inSteps = false
-                }
-            }
-        }
-        // 保存最后一个工作流
-        currentWorkflowName?.let { name ->
-            if (currentSteps.isNotEmpty()) {
-                workflows[name] = WorkflowDef(
-                    name = name,
-                    description = currentDescription,
-                    steps = currentSteps.toList(),
-                    requiredParams = currentParams.toList()
-                )
-            }
-        }
-        return workflows
     }
 
     private fun parsePageType(type: String): PageType {

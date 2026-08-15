@@ -38,7 +38,9 @@ class ResumePilotApp : Application() {
         // 全局崩溃捕获：记录到 filesDir/crash_log.txt，便于诊断"后台退出/闪退"类问题
         installCrashHandler()
 
-        // 数据库（开发阶段使用 destructive migration）
+        // 数据库。
+        // 注意：fallbackToDestructiveMigration 会清空数据，仅限开发阶段使用；
+        // 上生产前必须替换为手写 Migration（schema 已导出到 app/schemas 供编写参考）。
         database = Room.databaseBuilder(
             applicationContext,
             AppDatabase::class.java,
