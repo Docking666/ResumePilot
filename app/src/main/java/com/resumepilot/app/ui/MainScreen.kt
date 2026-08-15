@@ -31,6 +31,9 @@ import com.resumepilot.app.data.db.ExecutionLogEntity
 import com.resumepilot.app.engine.ResumePilotOrchestrator
 import com.resumepilot.app.llm.LLMProvider
 import com.resumepilot.app.llm.mcp.MCPGatewayManager
+import com.resumepilot.app.service.RPAAccessibilityService
+import com.resumepilot.app.service.RecordingForegroundService
+import com.resumepilot.app.service.ScreenshotCapture
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -123,11 +126,81 @@ fun MainScreen() {
 
 @Composable
 fun RecordingScreen() {
+    val app = ResumePilotApp.instance
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var isRecording by remember { mutableStateOf(false) }
     var taskDescription by remember { mutableStateOf("") }
     var isExploring by remember { mutableStateOf(false) }
+    var isGenerating by remember { mutableStateOf(false) }
     var logText by remember { mutableStateOf("") }
     var generatedScript by remember { mutableStateOf("") }
+    var hasScreenshotAuth by remember { mutableStateOf(app.screenshotCapture?.isAuthorized() == true) }
+    var pendingStart by remember { mutableStateOf(false) }
+
+    // 截图捕获实例（授权后写入全局，供 Orchestrator / MCP ScreenshotTool 复用）
+    val screenshotCapture = remember { ScreenshotCapture(context.applicationContext) }
+    val screenCaptureLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val ok = screenshotCapture.onActivityResult(result.resultCode, result.data)
+        if (ok) {
+            app.screenshotCapture = screenshotCapture
+            hasScreenshotAuth = true
+            logText += "[授权成功] 屏幕捕获已就绪\n"
+        } else {
+            logText += "[错误] 屏幕捕获授权失败\n"
+        }
+    }
+
+    // 编排器：复用全局截图器与应用级协程作用域（切后台/Activity 销毁不中断）
+    val orchestrator = remember {
+        ResumePilotOrchestrator(
+            context = context.applicationContext,
+            accessibilityService = RPAAccessibilityService.instance,
+            db = app.database,
+            preferences = app.preferences,
+            screenshotCapture = screenshotCapture,
+            scope = app.appScope
+        )
+    }
+
+    // 订阅编排器状态与日志
+    val orchStatus by orchestrator.status.collectAsState()
+    val orchLog by orchestrator.log.collectAsState()
+    LaunchedEffect(orchLog) {
+        if (orchLog.isNotEmpty()) logText = orchLog
+    }
+    LaunchedEffect(orchStatus) {
+        isExploring = orchStatus == ResumePilotOrchestrator.OrchestratorStatus.EXPLORING
+    }
+
+    fun startExplore() {
+        val svc = RPAAccessibilityService.instance
+        if (svc == null) {
+            logText += "[错误] 无障碍服务未开启，请先在系统设置中开启「简历投递助手」\n"
+            return
+        }
+        scope.launch {
+            val config = app.preferences.getLLMConfig()
+            if (config.apiKey.isBlank()) {
+                logText += "[错误] 未配置 LLM API Key，请先到「设置」页填写\n"
+                return@launch
+            }
+            orchestrator.updateLLMConfig(config)
+            RecordingForegroundService.start(context)
+            logText = ""
+            orchestrator.startExploring(taskDescription)
+        }
+    }
+
+    // 屏幕捕获授权完成后自动开始探索
+    LaunchedEffect(hasScreenshotAuth, pendingStart) {
+        if (hasScreenshotAuth && pendingStart) {
+            pendingStart = false
+            startExplore()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -148,6 +221,7 @@ fun RecordingScreen() {
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = when {
+                    isGenerating -> "正在生成脚本…"
                     isExploring -> "LLM 探索中…"
                     isRecording -> "录制中…"
                     else -> "待机"
@@ -155,6 +229,24 @@ fun RecordingScreen() {
                 style = MaterialTheme.typography.titleMedium
             )
         }
+
+        // 屏幕捕获授权状态
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                if (hasScreenshotAuth) Icons.Default.CheckCircle else Icons.Default.CameraAlt,
+                contentDescription = null,
+                tint = if (hasScreenshotAuth) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                if (hasScreenshotAuth) "屏幕捕获已授权（LLM 视觉可用）"
+                else "LLM 视觉需要屏幕捕获授权，探索时将自动请求",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+            )
+        }
+        Spacer(modifier = Modifier.height(12.dp))
 
         // 任务描述输入
         OutlinedTextField(
@@ -174,9 +266,24 @@ fun RecordingScreen() {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // 录制按钮
+            // 录制按钮（通过无障碍服务录制真实操作轨迹）
             OutlinedButton(
-                onClick = { isRecording = !isRecording },
+                onClick = {
+                    val svc = RPAAccessibilityService.instance
+                    if (isRecording) {
+                        val steps = svc?.stopRecording()
+                        logText += "[录制完成] 共 ${steps?.size ?: 0} 步\n"
+                        isRecording = false
+                    } else {
+                        if (svc == null) {
+                            logText += "[错误] 无障碍服务未开启\n"
+                        } else {
+                            svc.startRecording()
+                            isRecording = true
+                            logText += "[开始录制] 你的操作将被记录，完成后再点一次停止\n"
+                        }
+                    }
+                },
                 enabled = !isExploring,
                 modifier = Modifier.weight(1f)
             ) {
@@ -186,17 +293,22 @@ fun RecordingScreen() {
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
-                Text(if (isRecording) "停止录制" else "开始录制")
+                Text(if (isRecording) "停止录制" else "录制操作")
             }
 
             // LLM 探索按钮
             Button(
                 onClick = {
-                    isExploring = true
-                    logText += "[开始探索] $taskDescription\n"
-                    // 实际调用 Orchestrator
+                    if (hasScreenshotAuth) {
+                        startExplore()
+                    } else {
+                        // 未授权：先启动前台服务并请求屏幕捕获授权，授权后自动开始
+                        pendingStart = true
+                        RecordingForegroundService.start(context)
+                        screenCaptureLauncher.launch(screenshotCapture.createScreenCaptureIntent())
+                    }
                 },
-                enabled = taskDescription.isNotBlank() && !isExploring,
+                enabled = taskDescription.isNotBlank() && !isExploring && !isGenerating,
                 modifier = Modifier.weight(1f)
             ) {
                 Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -211,14 +323,47 @@ fun RecordingScreen() {
         if (isExploring) {
             Button(
                 onClick = {
-                    isExploring = false
-                    generatedScript = "name: \"自动投递脚本\"\nsteps:\n  - action: launch_app\n    package: \"com.hpbr.bosszhipin\"\n    wait: 3000\n  - action: wait\n    millis: 2000\n"
-                    logText += "[生成完成] 脚本已保存\n"
+                    scope.launch {
+                        isGenerating = true
+                        orchestrator.stop()
+                        val scriptName = taskDescription.take(20).ifBlank { "自动探索脚本" }
+                        logText += "[生成] 正在生成可复用脚本...\n"
+                        val yaml = orchestrator.generateScript(scriptName).await()
+                        if (!yaml.isNullOrEmpty()) {
+                            generatedScript = yaml
+                            // 保存到数据库（脚本 Tab 可见、可回放）
+                            app.database.scriptDao().insertScript(
+                                ScriptEntity(
+                                    id = java.util.UUID.randomUUID().toString(),
+                                    name = scriptName,
+                                    description = taskDescription,
+                                    yamlContent = yaml,
+                                    sourceTrajectoryId = null,
+                                    llmGenerated = true,
+                                    appPackage = null,
+                                    createdAt = System.currentTimeMillis(),
+                                    updatedAt = System.currentTimeMillis(),
+                                    runCount = 0,
+                                    successCount = 0,
+                                    tags = "[]"
+                                )
+                            )
+                            logText += "[完成] 脚本已保存到「脚本」Tab\n"
+                        } else {
+                            logText += "[错误] 脚本生成失败：无轨迹数据\n"
+                        }
+                        isGenerating = false
+                        RecordingForegroundService.stop(context)
+                    }
                 },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
             ) {
-                Icon(Icons.Default.AutoFixHigh, contentDescription = null, modifier = Modifier.size(18.dp))
+                if (isGenerating) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Default.AutoFixHigh, contentDescription = null, modifier = Modifier.size(18.dp))
+                }
                 Spacer(modifier = Modifier.width(4.dp))
                 Text("停止探索并生成脚本")
             }

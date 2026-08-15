@@ -31,7 +31,9 @@ import kotlin.random.Random
  */
 class BatchScheduler(
     private val accessibilityService: RPAAccessibilityService?,
-    private val llmClient: LLMClient?
+    private val llmClient: LLMClient?,
+    /** 屏幕截图捕获器（已授权时用于 LLM 自动修复） */
+    private val screenshotCapture: com.resumepilot.app.service.ScreenshotCapture? = null
 ) {
 
     /** 调度事件回调 */
@@ -49,7 +51,7 @@ class BatchScheduler(
     @Volatile
     var stats = BatchStats()
 
-    private val engine = WorkflowEngine(accessibilityService, llmClient)
+    private val engine = WorkflowEngine(accessibilityService, llmClient, screenshotCapture)
 
     /**
      * 执行完整投递流水线

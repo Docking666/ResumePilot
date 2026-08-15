@@ -307,6 +307,8 @@ private fun ScreenshotGuideStep(
             // Android 14+ 上必须先启动 mediaProjection 前台服务才能 getMediaProjection
             val ok = screenshotCapture.onActivityResult(result.resultCode, result.data)
             if (ok) {
+                // 写入全局，供 Orchestrator / MCP ScreenshotTool / WorkflowEngine 复用同一授权会话
+                ResumePilotApp.instance.screenshotCapture = screenshotCapture
                 isAuthorized = true
                 captureError = null
                 // 授权成功后，立即自动截图当前页面

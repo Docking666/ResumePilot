@@ -122,12 +122,22 @@ class ScreenshotTool(
     )
 
     override suspend fun execute(params: Map<String, Any>): MCPToolResult {
-        // 截图功能需要 MediaProjection 权限
-        // 此处返回截图占位，实际需要结合 Activity 的 MediaProjection
+        // 截图依赖 MediaProjection 授权：复用全局 ScreenshotCapture（引导/执行页授权后写入）
+        val capture = com.resumepilot.app.ResumePilotApp.instance.screenshotCapture
+        if (capture == null) {
+            return MCPToolResult.Error("截图功能未就绪：请先在「引导」或「执行」页完成屏幕捕获授权")
+        }
+        if (!capture.isAuthorized()) {
+            return MCPToolResult.Error("屏幕捕获未授权或会话已失效，请重新授权")
+        }
+        val base64 = capture.captureScreenshot()
+        if (base64 == null) {
+            return MCPToolResult.Error("截图失败：请确保屏幕已解锁且未锁屏")
+        }
         return MCPToolResult.Success(mapOf(
-            "status" to "截图功能已就绪，需要 MediaProjection 权限",
+            "status" to "ok",
             "format" to "PNG",
-            "max_resolution" to "1080x2400"
+            "image_base64" to base64
         ))
     }
 }

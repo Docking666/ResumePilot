@@ -39,15 +39,41 @@ import java.util.*
 /**
  * 执行界面——日常使用的核心操作界面
  *
- * 功能：
- * 1. 显示已生成的平台模板列表
- * 2. 输入搜索关键词和打招呼语
- * 3. 一键执行自动投递流水线
- * 4. 实时显示执行进度和日志
+ * 双模式：
+ * - 模板投递：使用已生成的平台模板执行自动投递
+ * - LLM 探索：输入任务描述，LLM 实时分析屏幕并自主探索执行
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExecutionScreen() {
+    var mode by remember { mutableIntStateOf(0) } // 0=模板投递 1=LLM 探索
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        TabRow(selectedTabIndex = mode) {
+            Tab(
+                selected = mode == 0,
+                onClick = { mode = 0 },
+                text = { Text("模板投递") }
+            )
+            Tab(
+                selected = mode == 1,
+                onClick = { mode = 1 },
+                text = { Text("LLM 探索") }
+            )
+        }
+        when (mode) {
+            0 -> TemplateExecutionScreen()
+            1 -> RecordingScreen()
+        }
+    }
+}
+
+/**
+ * 模板投递模式：显示平台模板列表，一键执行自动投递流水线
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TemplateExecutionScreen() {
     val app = ResumePilotApp.instance
     val scope = rememberCoroutineScope()
     var templates by remember { mutableStateOf<List<TemplateEntity>>(emptyList()) }
@@ -397,7 +423,7 @@ private suspend fun executeWorkflow(
             return
         }
 
-        val engine = WorkflowEngine(accessibilityService, llmClient)
+        val engine = WorkflowEngine(accessibilityService, llmClient, app.screenshotCapture)
 
         // 执行搜索工作流
         val searchResult = engine.execute(

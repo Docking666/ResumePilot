@@ -8,6 +8,8 @@ import android.content.Intent
 import android.os.Build
 import com.resumepilot.app.ResumePilotApp
 import com.resumepilot.app.data.db.TemplateEntity
+import com.resumepilot.app.service.RPAAccessibilityService
+import com.resumepilot.app.service.RecordingForegroundService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -195,31 +197,45 @@ class ScheduleReceiver : BroadcastReceiver() {
         val keyword = intent.getStringExtra("keyword") ?: "Java开发"
         val maxApplications = intent.getIntExtra("max_applications", 15)
 
-        // 在后台协程中执行投递
+        // 后台定时触发：无障碍服务未开启时无法操作 UI，直接放弃本次投递
+        val accessibilityService = RPAAccessibilityService.instance
+        if (accessibilityService == null) {
+            android.util.Log.w("ResumePilot-Schedule", "定时投递取消：无障碍服务未开启")
+            return
+        }
+
+        // 在后台协程中执行投递（前台服务 + WakeLock 保活，防止进程被杀/休眠）
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             val app = ResumePilotApp.instance
-            val templateEntity = app.database.templateDao().getTemplateById(templateId) ?: return@launch
-            val template = com.resumepilot.app.adapter.PlatformTemplate.fromJson(templateEntity.templateJson)
-            val config = app.preferences.getLLMConfig()
-            val llmClient = com.resumepilot.app.llm.LLMClient(config)
+            try {
+                RecordingForegroundService.start(app)
 
-            // 执行流水线
-            val scheduler = BatchScheduler(
-                accessibilityService = null,  // 后台触发的无法直接操作 UI
-                llmClient = llmClient
-            )
+                val templateEntity = app.database.templateDao().getTemplateById(templateId) ?: return@launch
+                val template = com.resumepilot.app.adapter.PlatformTemplate.fromJson(templateEntity.templateJson)
+                val config = app.preferences.getLLMConfig()
+                val llmClient = com.resumepilot.app.llm.LLMClient(config)
 
-            val result = scheduler.runPipeline(
-                template = template,
-                config = PipelineConfig(
-                    keyword = keyword,
-                    maxApplications = maxApplications,
-                    customGreeting = ""
+                // 执行流水线
+                val scheduler = BatchScheduler(
+                    accessibilityService = accessibilityService,
+                    llmClient = llmClient,
+                    screenshotCapture = app.screenshotCapture
                 )
-            )
 
-            // 发送通知
-            sendNotification(context, result)
+                val result = scheduler.runPipeline(
+                    template = template,
+                    config = PipelineConfig(
+                        keyword = keyword,
+                        maxApplications = maxApplications,
+                        customGreeting = ""
+                    )
+                )
+
+                // 发送通知
+                sendNotification(context, result)
+            } finally {
+                RecordingForegroundService.stop(app)
+            }
         }
     }
 

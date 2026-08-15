@@ -21,7 +21,14 @@ class ResumePilotApp : Application() {
     lateinit var resumeManager: ResumeManager
     lateinit var mcpGatewayManager: MCPGatewayManager
 
-    // 全局协程作用域
+    /**
+     * 全局屏幕截图捕获器：用户在任何页面完成 MediaProjection 授权后写入，
+     * 供 Orchestrator / MCP ScreenshotTool / WorkflowEngine 复用同一授权会话。
+     */
+    @Volatile
+    var screenshotCapture: com.resumepilot.app.service.ScreenshotCapture? = null
+
+    // 全局协程作用域（应用级，任务在 Activity 销毁后仍可继续执行）
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {

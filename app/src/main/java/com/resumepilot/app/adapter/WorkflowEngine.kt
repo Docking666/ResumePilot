@@ -20,7 +20,9 @@ import kotlin.random.Random
  */
 class WorkflowEngine(
     private val accessibilityService: RPAAccessibilityService?,
-    private val llmClient: LLMClient?
+    private val llmClient: LLMClient?,
+    /** 屏幕截图捕获器（需先完成 MediaProjection 授权）；null 时自动修复降级为纯文本模式 */
+    private val screenshotCapture: com.resumepilot.app.service.ScreenshotCapture? = null
 ) {
 
     /**
@@ -207,14 +209,19 @@ class WorkflowEngine(
         if (llmClient == null || accessibilityService == null) return false
 
         return try {
-            // 获取当前屏幕截图和控件树
+            // 获取当前屏幕截图（已授权时）和控件树
             val uiTree = accessibilityService.getUITree()
+            val screenshot = try {
+                screenshotCapture?.captureScreenshot()
+            } catch (e: Exception) {
+                null
+            }
 
             val decision = llmClient.decideNextAction(
                 taskDescription = "当前在执行${template.platformName}的自动化流程，"
                         + "步骤 ${failedStep.id} (${failedStep.action}) 失败。"
                         + "目标: ${failedStep.target ?: failedStep.text}",
-                screenshotBase64 = "", // 截图需要外部传入
+                screenshotBase64 = screenshot,
                 uiTree = uiTree
             )
 
