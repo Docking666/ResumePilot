@@ -1,5 +1,8 @@
 package com.resumepilot.app.ui
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -15,8 +18,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -24,6 +29,7 @@ import com.resumepilot.app.ResumePilotApp
 import com.resumepilot.app.data.db.ScriptEntity
 import com.resumepilot.app.data.db.ExecutionLogEntity
 import com.resumepilot.app.engine.ResumePilotOrchestrator
+import com.resumepilot.app.llm.LLMProvider
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -456,6 +462,24 @@ fun ResumeScreen() {
     var jobRequirements by remember { mutableStateOf("") }
     var matchScore by remember { mutableStateOf<Int?>(null) }
     var isGenerating by remember { mutableStateOf(false) }
+    var uploadStatus by remember { mutableStateOf<String?>(null) }
+
+    // 文件选择器
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                uploadStatus = "正在解析简历..."
+                val result = app.resumeManager.uploadResume(uri)
+                uploadStatus = if (result.isSuccess) {
+                    "简历上传成功: ${result.getOrNull()?.name}"
+                } else {
+                    "上传失败: ${result.exceptionOrNull()?.message}"
+                }
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -500,6 +524,35 @@ fun ResumeScreen() {
             Icon(Icons.Default.Upload, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(modifier = Modifier.width(4.dp))
             Text(if (resume != null) "重新上传简历" else "上传简历")
+        }
+
+        // 上传状态
+        uploadStatus?.let { status ->
+            Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (status.startsWith("简历上传成功"))
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                    else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                ),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        if (status.startsWith("简历上传成功")) Icons.Default.CheckCircle else Icons.Default.Error,
+                        contentDescription = null,
+                        tint = if (status.startsWith("简历上传成功"))
+                            MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(status, style = MaterialTheme.typography.bodySmall)
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -659,26 +712,11 @@ fun ResumeScreen() {
             confirmButton = {
                 Button(onClick = {
                     showUploadDialog = false
-                    scope.launch {
-                        app.resumeManager.setResume(
-                            com.resumepilot.app.resume.ResumeData(
-                                name = "张三",
-                                title = "Java开发工程师",
-                                summary = "5年后端开发经验，精通Java、Spring Boot、微服务架构",
-                                skills = listOf("Java", "Spring Boot", "MySQL", "Redis", "Kafka", "Docker", "Kubernetes"),
-                                workExperience = listOf(
-                                    com.resumepilot.app.resume.WorkExperience(
-                                        company = "某互联网公司",
-                                        title = "高级Java工程师",
-                                        startDate = "2021",
-                                        endDate = "至今",
-                                        description = "负责核心业务系统架构设计和开发",
-                                        highlights = listOf("主导了微服务拆分", "系统QPS提升3倍")
-                                    )
-                                )
-                            )
-                        )
-                    }
+                    filePickerLauncher.launch(arrayOf(
+                        "application/pdf",
+                        "text/plain",
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    ))
                 }) { Text("选择文件") }
             },
             dismissButton = {
@@ -717,18 +755,47 @@ fun SettingsScreen() {
         }
 
         item {
-            OutlinedTextField(
-                value = llmProvider,
-                onValueChange = { llmProvider = it },
-                label = { Text("模型供应商") },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = false
-            )
-            Text(
-                "支持: OpenAI / Anthropic / 阿里千问 / DeepSeek / Gemini",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-            )
+            // LLM 供应商下拉选择
+            var expanded by remember { mutableStateOf(false) }
+            val providers = LLMProvider.entries.toList()
+
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = !expanded }
+            ) {
+                OutlinedTextField(
+                    value = llmProvider,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("模型供应商") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(),
+                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
+                )
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    providers.forEach { provider ->
+                        DropdownMenuItem(
+                            text = { Text(provider.displayName) },
+                            onClick = {
+                                llmProvider = provider.displayName
+                                modelName = when (provider) {
+                                    LLMProvider.OPENAI -> "gpt-4o"
+                                    LLMProvider.ANTHROPIC -> "claude-3-5-sonnet"
+                                    LLMProvider.ALIYUN -> "qwen-vl-plus"
+                                    LLMProvider.DEEPSEEK -> "deepseek-chat"
+                                    LLMProvider.GEMINI -> "gemini-1.5-pro"
+                                }
+                                expanded = false
+                            }
+                        )
+                    }
+                }
+            }
         }
 
         item {

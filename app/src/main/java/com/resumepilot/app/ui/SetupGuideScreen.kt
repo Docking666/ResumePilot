@@ -1,5 +1,8 @@
 package com.resumepilot.app.ui
 
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -14,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -23,7 +27,10 @@ import com.resumepilot.app.adapter.GuidePage
 import com.resumepilot.app.adapter.PlatformAdapter
 import com.resumepilot.app.adapter.PlatformTemplate
 import com.resumepilot.app.adapter.TemplateGenerationResult
+import com.resumepilot.app.service.ScreenshotCapture
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 引导截图界面——用户首次使用时的核心交互界面
@@ -99,6 +106,7 @@ fun SetupGuideScreen() {
                     adapter = selectedAdapter,
                     currentPageIndex = currentPageIndex,
                     totalPages = selectedAdapter?.guideConfig?.pages?.size ?: 0,
+                    scope = scope,
                     onScreenshotTaken = { pageKey, base64 ->
                         capturedScreenshots.add(pageKey to base64)
                         val pages = selectedAdapter?.guideConfig?.pages ?: emptyList()
@@ -264,11 +272,50 @@ private fun ScreenshotGuideStep(
     adapter: PlatformAdapter?,
     currentPageIndex: Int,
     totalPages: Int,
+    scope: CoroutineScope,
     onScreenshotTaken: (String, String) -> Unit,
     onSkip: () -> Unit
 ) {
+    val context = LocalContext.current
     val pages = adapter?.guideConfig?.pages ?: emptyList()
     val currentPage = pages.getOrNull(currentPageIndex)
+    var isCapturing by remember { mutableStateOf(false) }
+    var captureError by remember { mutableStateOf<String?>(null) }
+
+    // 截图捕获实例（记住，不随重组重建）
+    val screenshotCapture = remember {
+        ScreenshotCapture(context.applicationContext)
+    }
+
+    // MediaProjection 授权 Launcher
+    val screenCaptureLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            screenshotCapture.onActivityResult(result.resultCode, result.data)
+            // 授权成功后自动截图
+            isCapturing = true
+            scope.launch(Dispatchers.IO) {
+                val base64 = screenshotCapture.captureScreenshot()
+                withContext(Dispatchers.Main) {
+                    isCapturing = false
+                    if (base64 != null) {
+                        onScreenshotTaken(currentPage!!.key, base64)
+                    } else {
+                        captureError = "截图失败，请检查屏幕捕获权限"
+                    }
+                }
+            }
+        } else {
+            isCapturing = false
+            captureError = "用户拒绝了屏幕捕获授权"
+        }
+    }
+
+    // 清理
+    DisposableEffect(Unit) {
+        onDispose { screenshotCapture.release() }
+    }
 
     Column(
         modifier = Modifier
@@ -344,26 +391,80 @@ private fun ScreenshotGuideStep(
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            // 错误提示
+            captureError?.let { error ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Error, contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(error, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
             // 操作按钮
             Button(
                 onClick = {
-                    // 实际截图通过 MediaProjection 获取 Base64
-                    // 此处触发截图回调
-                    onScreenshotTaken(currentPage.key, "screenshot_base64_placeholder")
+                    captureError = null
+                    if (!screenshotCapture.isAuthorized()) {
+                        // 尚未授权，请求屏幕捕获权限
+                        isCapturing = true
+                        screenCaptureLauncher.launch(screenshotCapture.createScreenCaptureIntent())
+                    } else {
+                        // 已授权，直接截图
+                        isCapturing = true
+                        scope.launch(Dispatchers.IO) {
+                            val base64 = screenshotCapture.captureScreenshot()
+                            withContext(Dispatchers.Main) {
+                                isCapturing = false
+                                if (base64 != null) {
+                                    onScreenshotTaken(currentPage.key, base64)
+                                } else {
+                                    captureError = "截图失败，请重试"
+                                }
+                            }
+                        }
+                    }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(16.dp),
+                enabled = !isCapturing
             ) {
-                Icon(Icons.Default.CameraAlt, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("截图并确认", fontSize = 16.sp)
+                if (isCapturing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("截图中...", fontSize = 16.sp)
+                } else {
+                    Icon(Icons.Default.CameraAlt, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        if (screenshotCapture.isAuthorized()) "截图并确认" else "授权并截图",
+                        fontSize = 16.sp
+                    )
+                }
             }
 
             if (!currentPage.required) {
                 Spacer(modifier = Modifier.height(8.dp))
-                TextButton(onClick = onSkip) {
+                TextButton(onClick = onSkip, enabled = !isCapturing) {
                     Text("跳过此页（可选）")
                 }
             }
