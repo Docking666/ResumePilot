@@ -407,7 +407,7 @@ private fun AnalyzingStep(
         )
         Spacer(modifier = Modifier.height(16.dp))
         LinearProgressIndicator(
-            progress = { if (totalPages > 0) currentPageIndex.toFloat() / totalPages else 0f },
+            progress = if (totalPages > 0) currentPageIndex.toFloat() / totalPages else 0f,
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(8.dp))

@@ -295,18 +295,50 @@ class ActionExecutor(private val service: AccessibilityService) {
     }
 
     private fun performType(text: String): Boolean {
-        // 逐个字符输入，模拟真人打字
-        for (char in text) {
-            if (shouldStop) break
-            val clipboard = service.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
-                    as android.content.ClipboardManager
-            val clip = android.content.ClipData.newPlainText("text", char.toString())
-            clipboard.setPrimaryClip(clip)
-            // 通过粘贴方式输入（兼容性好）
-            service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_PASTE)
-            Thread.sleep(50 + (Math.random() * 100).toLong())
+        // 逐个字符输入，通过 AccessibilityNodeInfo 的 ACTION_PASTE 粘贴
+        val root = service.rootInActiveWindow ?: return false
+        val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: root
+
+        // 尝试找到可编辑的节点
+        val targetNode = if (focused.isEditable) focused else findEditableNode(root)
+        if (targetNode == null || !targetNode.isEditable) {
+            // 降级方案：逐个字符输入
+            for (char in text) {
+                if (shouldStop) break
+                val args = android.os.Bundle().apply {
+                    putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, char.toString())
+                }
+                targetNode?.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                Thread.sleep(50 + (Math.random() * 100).toLong())
+            }
+            targetNode?.recycle()
+            root.recycle()
+            return true
         }
+
+        // 通过 Clipboard + ACTION_PASTE 粘贴
+        val clipboard = service.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                as android.content.ClipboardManager
+        val clip = android.content.ClipData.newPlainText("text", text)
+        clipboard.setPrimaryClip(clip)
+        targetNode.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_PASTE.getId())
+        targetNode.recycle()
+        root.recycle()
         return true
+    }
+
+    private fun findEditableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        if (node.isEditable) return node
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val result = findEditableNode(child)
+            if (result != null) {
+                child.recycle()
+                return result
+            }
+            child.recycle()
+        }
+        return null
     }
 
     private fun findAndClick(action: Action.FindAndClick): Boolean {
