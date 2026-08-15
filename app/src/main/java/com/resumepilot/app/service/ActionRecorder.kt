@@ -295,36 +295,64 @@ class ActionExecutor(private val service: AccessibilityService) {
     }
 
     private fun performType(text: String): Boolean {
-        // 逐个字符输入，通过 AccessibilityNodeInfo 的 ACTION_PASTE 粘贴
+        // 输入策略（按可靠性逐级降级）：
+        //   1. ACTION_SET_TEXT 整段设置（大多数输入框支持，最稳定）
+        //   2. Clipboard + ACTION_PASTE 粘贴（部分 App 拦截剪贴板）
+        //   3. 逐字符 ACTION_SET_TEXT（兜底，模拟人工输入）
         val root = service.rootInActiveWindow ?: return false
         val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: root
 
         // 尝试找到可编辑的节点
         val targetNode = if (focused.isEditable) focused else findEditableNode(root)
         if (targetNode == null || !targetNode.isEditable) {
-            // 降级方案：逐个字符输入
+            root.recycle()
+            return false
+        }
+
+        // 1. 首选：ACTION_SET_TEXT 整段设置
+        var ok = false
+        try {
+            val args = android.os.Bundle().apply {
+                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+            }
+            ok = targetNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        } catch (_: Exception) {
+            ok = false
+        }
+
+        // 2. 降级：Clipboard + ACTION_PASTE 粘贴
+        if (!ok) {
+            try {
+                val clipboard = service.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                        as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("text", text))
+                ok = targetNode.performAction(
+                    AccessibilityNodeInfo.AccessibilityAction.ACTION_PASTE.getId()
+                )
+            } catch (_: Exception) {
+                ok = false
+            }
+        }
+
+        // 3. 兜底：逐字符输入
+        if (!ok) {
             for (char in text) {
                 if (shouldStop) break
                 val args = android.os.Bundle().apply {
-                    putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, char.toString())
+                    putCharSequence(
+                        AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                        char.toString()
+                    )
                 }
-                targetNode?.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                targetNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
                 Thread.sleep(50 + (Math.random() * 100).toLong())
             }
-            targetNode?.recycle()
-            root.recycle()
-            return true
+            ok = true
         }
 
-        // 通过 Clipboard + ACTION_PASTE 粘贴
-        val clipboard = service.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
-                as android.content.ClipboardManager
-        val clip = android.content.ClipData.newPlainText("text", text)
-        clipboard.setPrimaryClip(clip)
-        targetNode.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_PASTE.getId())
         targetNode.recycle()
         root.recycle()
-        return true
+        return ok
     }
 
     private fun findEditableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {

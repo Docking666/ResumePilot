@@ -389,7 +389,18 @@ class ResumePilotOrchestrator(
     }
 
     private fun appendLog(message: String) {
-        _log.value += "[${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}] $message\n"
+        // 防止日志无限增长导致内存泄漏：超过上限时丢弃最旧部分
+        val line = "[${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}] $message\n"
+        val current = _log.value
+        _log.value = if (current.length + line.length > MAX_LOG_CHARS) {
+            current.takeLast(MAX_LOG_CHARS * 3 / 4) + line
+        } else {
+            current + line
+        }
+    }
+
+    private companion object {
+        const val MAX_LOG_CHARS = 16_000
     }
 
     private fun Action.description(): String {

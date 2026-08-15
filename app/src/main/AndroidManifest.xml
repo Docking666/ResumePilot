@@ -69,10 +69,14 @@
             android:exported="false"
             android:stopWithTask="false" />
 
-        <!-- 定时任务广播接收器 -->
+        <!-- 定时任务广播接收器（定时触发 + 开机恢复调度） -->
         <receiver
             android:name=".scheduler.ScheduleReceiver"
-            android:exported="false" />
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
     </application>
 </manifest>

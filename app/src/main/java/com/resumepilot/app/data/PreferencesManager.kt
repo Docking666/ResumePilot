@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import com.resumepilot.app.llm.LLMConfig
 import com.resumepilot.app.llm.LLMProvider
+import com.resumepilot.app.util.CryptoManager
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -31,7 +32,8 @@ class PreferencesManager(private val context: Context) {
     val llmConfigFlow: Flow<LLMConfig> = context.dataStore.data.map { prefs ->
         LLMConfig(
             provider = LLMProvider.fromName(prefs[LLM_PROVIDER] ?: "OpenAI"),
-            apiKey = prefs[LLM_API_KEY] ?: "",
+            // API Key 加密存储；解密失败时兼容旧版本明文
+            apiKey = CryptoManager.decrypt(prefs[LLM_API_KEY]) ?: prefs[LLM_API_KEY] ?: "",
             baseUrl = prefs[LLM_BASE_URL] ?: "",
             modelName = prefs[LLM_MODEL_NAME] ?: "gpt-4o",
             temperature = prefs[LLM_TEMPERATURE] ?: 0.1f,
@@ -44,7 +46,8 @@ class PreferencesManager(private val context: Context) {
     suspend fun saveLLMConfig(config: LLMConfig) {
         context.dataStore.edit { prefs ->
             prefs[LLM_PROVIDER] = config.provider.name
-            prefs[LLM_API_KEY] = config.apiKey
+            // 写入前加密，明文不再落盘
+            prefs[LLM_API_KEY] = CryptoManager.encrypt(config.apiKey) ?: config.apiKey
             prefs[LLM_BASE_URL] = config.baseUrl
             prefs[LLM_MODEL_NAME] = config.modelName
             prefs[LLM_TEMPERATURE] = config.temperature

@@ -78,10 +78,17 @@ class ScheduledTaskManager(private val context: Context) {
 
     /**
      * 注册所有定时任务
+     * 使用精确闹钟（setExactAndAllowWhileIdle）确保休眠时也能按时触发；
+     * Android 12+ 若用户关闭了"闹钟和提醒"权限则降级为非精确闹钟。
+     * 注：精确闹钟每次只触发一次，触发后由 ScheduleReceiver 重新调度。
      */
     fun scheduleAll() {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val times = scheduleTimes
+
+        // Android 12+ 检查精确闹钟权限（SCHEDULE_EXACT_ALARM）
+        val canUseExactAlarm = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                alarmManager.canScheduleExactAlarms()
 
         times.forEachIndexed { index, time ->
             val parts = time.split(":")
@@ -114,13 +121,20 @@ class ScheduledTaskManager(private val context: Context) {
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
 
-                // 使用 RTC_WAKEUP 确保手机休眠时也能触发
-                alarmManager.setRepeating(
-                    AlarmManager.RTC_WAKEUP,
-                    calendar.timeInMillis,
-                    AlarmManager.INTERVAL_DAY,
-                    pendingIntent
-                )
+                // RTC_WAKEUP 确保手机休眠时也能触发；精确优先，无权限降级
+                if (canUseExactAlarm) {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        calendar.timeInMillis,
+                        pendingIntent
+                    )
+                } else {
+                    alarmManager.setAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        calendar.timeInMillis,
+                        pendingIntent
+                    )
+                }
             }
         }
     }
@@ -193,6 +207,13 @@ class ScheduledTaskManager(private val context: Context) {
  */
 class ScheduleReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        // 开机后恢复定时任务（精确闹钟不跨重启保留，需重新注册）
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
+            val manager = ScheduledTaskManager(context)
+            if (manager.isEnabled) manager.scheduleAll()
+            return
+        }
+
         val templateId = intent.getStringExtra("template_id") ?: return
         val keyword = intent.getStringExtra("keyword") ?: "Java开发"
         val maxApplications = intent.getIntExtra("max_applications", 15)
@@ -233,6 +254,10 @@ class ScheduleReceiver : BroadcastReceiver() {
 
                 // 发送通知
                 sendNotification(context, result)
+
+                // 精确闹钟一次性触发：重新调度下一天的定时任务
+                val manager = ScheduledTaskManager(context)
+                if (manager.isEnabled) manager.scheduleAll()
             } finally {
                 RecordingForegroundService.stop(app)
             }

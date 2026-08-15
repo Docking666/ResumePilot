@@ -35,6 +35,9 @@ class ResumePilotApp : Application() {
         super.onCreate()
         instance = this
 
+        // 全局崩溃捕获：记录到 filesDir/crash_log.txt，便于诊断"后台退出/闪退"类问题
+        installCrashHandler()
+
         // 数据库（开发阶段使用 destructive migration）
         database = Room.databaseBuilder(
             applicationContext,
@@ -54,6 +57,27 @@ class ResumePilotApp : Application() {
 
         // 注册平台适配器
         registerPlatformAdapters()
+    }
+
+    /**
+     * 全局未捕获异常处理：写入崩溃日志后交给原默认处理器（不吞异常）。
+     * 崩溃日志位于 /data/data/包名/files/crash_log.txt
+     */
+    private fun installCrashHandler() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                val logFile = java.io.File(filesDir, "crash_log.txt")
+                logFile.appendText(
+                    "----- ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())} -----\n" +
+                            "thread: ${thread.name}\n" +
+                            android.util.Log.getStackTraceString(throwable) + "\n"
+                )
+            } catch (_: Exception) {
+                // 记录失败不阻塞崩溃流程
+            }
+            previous?.uncaughtException(thread, throwable)
+        }
     }
 
     private fun registerPlatformAdapters() {
