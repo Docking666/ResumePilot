@@ -174,6 +174,7 @@ fun SetupGuideScreen() {
 
 // ====== 子步骤界面 ======
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SelectPlatformStep(
     adapters: List<PlatformAdapter>,
