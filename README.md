@@ -90,8 +90,11 @@ cd ResumePilot
 
 APK 输出位置：`app/build/outputs/apk/debug/`
 
-> **国内网络提示**：项目已默认使用腾讯云 Gradle 发行版镜像与阿里云 Maven 镜像，
-> 无需手动配置即可在墙内环境完成构建。
+> **国内网络提示**：项目默认使用官方 Gradle 发行版源（保证 GitHub Actions CI 可用）。
+> 国内首次构建若 Gradle 下载慢，可手动把 `gradle/wrapper/gradle-wrapper.properties` 中
+> `distributionUrl` 改为腾讯云镜像：
+> `https://mirrors.cloud.tencent.com/gradle/gradle-8.14.5-bin.zip`
+> Maven 依赖已配置阿里云镜像，无需改动。
 
 ### 配置 LLM
 
