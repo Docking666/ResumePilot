@@ -30,6 +30,7 @@ import com.resumepilot.app.data.db.ScriptEntity
 import com.resumepilot.app.data.db.ExecutionLogEntity
 import com.resumepilot.app.engine.ResumePilotOrchestrator
 import com.resumepilot.app.llm.LLMProvider
+import com.resumepilot.app.llm.mcp.MCPGatewayManager
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -875,6 +876,95 @@ fun SettingsScreen() {
                 description = "用于 LLM 分析屏幕内容",
                 icon = Icons.Default.Screenshot
             )
+        }
+
+        // ====== MCP 工具管理 ======
+        item {
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("MCP 工具管理", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        }
+
+        item {
+            MCPStatusCard()
+        }
+    }
+}
+
+@Composable
+fun MCPStatusCard() {
+    val mcpManager = MCPGatewayManager.getInstance()
+    val isReady = remember { mcpManager.isReady() }
+    val registry = remember { mcpManager.registry }
+    val tools by registry.collectAsState()
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            // 网关状态
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(if (isReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (isReady) "MCP 网关已就绪" else "MCP 网关未初始化",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 已注册工具列表
+            Text(
+                "已注册工具 (${tools.getAll().size})",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (tools.getAll().isEmpty()) {
+                Text(
+                    "暂无工具，启动无障碍服务后自动注册",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                )
+            } else {
+                tools.getAll().forEach { tool ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                tool.name,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                tool.description,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -4,12 +4,12 @@ package com.resumepilot.app.llm
  * LLM 供应商配置
  * 支持多模型切换：GPT-4o / Claude / 千问VL / DeepSeek / Gemini
  */
-enum class LLMProvider(val displayName: String) {
-    OPENAI("OpenAI GPT-4o"),
-    ANTHROPIC("Anthropic Claude"),
-    ALIYUN("阿里千问 VL"),
-    DEEPSEEK("DeepSeek"),
-    GEMINI("Google Gemini");
+enum class LLMProvider(val displayName: String, val supportsVision: Boolean) {
+    OPENAI("OpenAI GPT-4o", true),
+    ANTHROPIC("Anthropic Claude", true),
+    ALIYUN("阿里千问 VL", true),
+    DEEPSEEK("DeepSeek", false),
+    GEMINI("Google Gemini", true);
 
     companion object {
         fun fromName(name: String): LLMProvider {

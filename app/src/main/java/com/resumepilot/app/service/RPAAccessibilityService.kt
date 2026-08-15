@@ -5,7 +5,9 @@ import android.content.Intent
 import android.os.Build
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.resumepilot.app.ResumePilotApp
 import com.resumepilot.app.engine.Action
+import com.resumepilot.app.llm.mcp.tools.*
 import com.resumepilot.app.service.ActionExecutor
 import kotlinx.coroutines.*
 
@@ -32,6 +34,18 @@ class RPAAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         recorder = ActionRecorder(this)
         executor = ActionExecutor(this)
+
+        // 注册 MCP 工具（为 DeepSeek 等纯文本模型提供视觉能力）
+        val app = ResumePilotApp.instance
+        val mcpManager = app.mcpGatewayManager
+        mcpManager.initialize {
+            register(ScreenAnalysisTool(this))
+            register(ScreenshotTool(this))
+            register(ExecuteActionTool(this))
+            register(FindElementTool(this))
+            register(ScriptManagerTool(app.database))
+            register(ResumeTool(app.resumeManager))
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {

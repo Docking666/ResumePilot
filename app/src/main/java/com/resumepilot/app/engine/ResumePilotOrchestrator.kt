@@ -89,6 +89,9 @@ class ResumePilotOrchestrator(
         scriptGenerator = ScriptGenerator(config)
     }
 
+    private fun isVisionModel(): Boolean =
+        llmClient?.config?.provider?.supportsVision ?: true
+
     /**
      * 模式1: EXPLORE — LLM 自主探索，记录轨迹
      */
@@ -106,22 +109,25 @@ class ResumePilotOrchestrator(
         var stepCount = 0
         val maxSteps = preferences.maxStepsPerTask.first()
 
-        appendLog("开始探索任务: $taskDescription")
+        appendLog("开始探索任务: $taskDescription" +
+                if (isVisionModel()) "（视觉模式）" else "（纯文本模式，依赖控件树）")
 
         while (stepCount < maxSteps) {
             if (_status.value != OrchestratorStatus.EXPLORING) break
 
-            // 1. 截图
-            val screenshot = captureScreenshot()
-            if (screenshot == null) {
-                appendLog("截图失败")
-                break
-            }
+            // 1. 截图（仅视觉模型需要）
+            val screenshot = if (isVisionModel()) {
+                captureScreenshot().also {
+                    if (it == null) {
+                        appendLog("截图失败，降级为纯文本模式")
+                    }
+                }
+            } else null
 
             // 2. 获取控件树
             val uiTree = accessibilityService.getUITree()
 
-            // 3. LLM 决策下一步
+            // 3. LLM 决策下一步（纯文本模型内部会自动走 MCP 工具路径）
             val decision = llmClient!!.decideNextAction(
                 taskDescription = taskDescription,
                 screenshotBase64 = screenshot,
@@ -331,12 +337,12 @@ class ResumePilotOrchestrator(
             retryCount++
             appendLog("第 $retryCount 次失败，LLM 尝试修复...")
 
-            val screenshot = captureScreenshot()
+            val screenshot = if (isVisionModel()) captureScreenshot() else null
             val uiTree = accessibilityService.getUITree()
 
             val decision = client.decideNextAction(
                 taskDescription = "修复自动化流程，当前在执行: ${scriptEntity.name}，第 ${result.completedSteps + 1} 步失败",
-                screenshotBase64 = screenshot ?: "",
+                screenshotBase64 = screenshot,
                 uiTree = uiTree,
                 previousActions = listOf("失败步骤: ${result.failedAction}")
             )

@@ -28,13 +28,20 @@ class LLMClient(val config: LLMConfig) {
 
     /**
      * 分析屏幕截图，返回结构化理解
+     * 自动适配：视觉模型传截图，纯文本模型（DeepSeek）只传 UI 树
      */
     suspend fun analyzeScreen(
-        screenshotBase64: String,
+        screenshotBase64: String? = null,
         uiTree: String? = null
     ): ScreenAnalysis = withContext(Dispatchers.IO) {
         val prompt = buildString {
-            append("你是一个手机屏幕分析专家。分析这张截图，返回 JSON 格式：\n")
+            append("你是一个手机屏幕分析专家。")
+            if (!config.provider.supportsVision) {
+                append("你无法看到截图，请根据以下控件树信息分析屏幕。\n\n")
+            } else {
+                append("分析这张截图，")
+            }
+            append("返回 JSON 格式：\n")
             append("{\n")
             append("  \"description\": \"屏幕整体描述\",\n")
             append("  \"currentApp\": \"当前应用包名或名称\",\n")
@@ -55,22 +62,30 @@ class LLMClient(val config: LLMConfig) {
             }
         }
 
-        val response = callVisionModel(prompt, screenshotBase64)
+        val response = if (config.provider.supportsVision && screenshotBase64 != null) {
+            callVisionModel(prompt, screenshotBase64)
+        } else {
+            callTextModel(prompt)
+        }
         parseScreenAnalysis(response)
     }
 
     /**
      * 根据屏幕截图 + 任务目标，决策下一步动作
+     * 自动适配：视觉模型传截图，纯文本模型（DeepSeek）只传 UI 树描述
      */
     suspend fun decideNextAction(
         taskDescription: String,
-        screenshotBase64: String,
+        screenshotBase64: String? = null,
         uiTree: String? = null,
         previousActions: List<String> = emptyList()
     ): LLMDecision = withContext(Dispatchers.IO) {
         val prompt = buildString {
             append("你是一个手机自动化操作专家。你的任务是：$taskDescription\n\n")
-            append("请分析当前屏幕截图，决定下一步操作。\n\n")
+            if (!config.provider.supportsVision) {
+                append("注意：你无法看到屏幕截图，请根据以下控件树信息进行分析。\n\n")
+            }
+            append("请分析当前屏幕，决定下一步操作。\n\n")
             append("可用操作类型：\n")
             append("1. CLICK x y - 点击坐标 (x, y)\n")
             append("2. TYPE \"文本\" - 输入文本\n")
@@ -95,12 +110,18 @@ class LLMClient(val config: LLMConfig) {
                 }
             }
             if (uiTree != null) {
-                append("\n控件树：\n$uiTree\n")
+                append("\n当前屏幕控件树（供参考）：\n$uiTree\n")
             }
         }
 
-        val response = callVisionModel(prompt, screenshotBase64)
-        parseDecision(response)
+        // 纯文本模型（DeepSeek）只传文字，不传截图
+        if (config.provider.supportsVision && screenshotBase64 != null) {
+            val response = callVisionModel(prompt, screenshotBase64)
+            parseDecision(response)
+        } else {
+            val response = callTextModel(prompt)
+            parseDecision(response)
+        }
     }
 
     /**
