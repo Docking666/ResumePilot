@@ -726,6 +726,7 @@ fun ResumeScreen() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen() {
     val app = ResumePilotApp.instance

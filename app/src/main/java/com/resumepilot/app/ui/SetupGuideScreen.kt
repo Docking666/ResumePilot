@@ -28,6 +28,7 @@ import com.resumepilot.app.adapter.PlatformAdapter
 import com.resumepilot.app.adapter.PlatformTemplate
 import com.resumepilot.app.adapter.TemplateGenerationResult
 import com.resumepilot.app.service.ScreenshotCapture
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
