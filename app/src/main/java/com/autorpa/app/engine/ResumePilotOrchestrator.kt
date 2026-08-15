@@ -16,7 +16,6 @@ import com.autorpa.app.service.RPAAccessibilityService
 import com.google.gson.Gson
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import java.io.ByteArrayOutputStream
 
 /**
@@ -90,7 +89,7 @@ class ResumePilotOrchestrator(
     /**
      * 模式1: EXPLORE — LLM 自主探索，记录轨迹
      */
-    suspend fun startExploring(taskDescription: String) = scope.launch {
+    fun startExploring(taskDescription: String) = scope.launch {
         if (llmClient == null || accessibilityService == null) {
             _status.value = OrchestratorStatus.ERROR
             _log.value = "LLM 未配置或无障碍服务未连接"
@@ -179,7 +178,7 @@ class ResumePilotOrchestrator(
     /**
      * 模式2: GENERATE — 从轨迹生成 RPA 脚本
      */
-    suspend fun generateScript(scriptName: String): String? = scope.launch {
+    fun generateScript(scriptName: String): Deferred<String?> = scope.async {
         _status.value = OrchestratorStatus.GENERATING
         appendLog("正在生成 RPA 脚本...")
 
@@ -187,7 +186,7 @@ class ResumePilotOrchestrator(
             if (currentTrajectorySteps.isEmpty()) {
                 appendLog("没有轨迹数据")
                 _status.value = OrchestratorStatus.IDLE
-                return@launch null
+                return@async null
             }
 
             val trajectory = Trajectory(
@@ -241,18 +240,18 @@ class ResumePilotOrchestrator(
             }
 
             _status.value = OrchestratorStatus.IDLE
-            return@launch yaml
+            return@async yaml
         } catch (e: Exception) {
             appendLog("脚本生成失败: ${e.message}")
             _status.value = OrchestratorStatus.ERROR
-            return@launch null
+            return@async null
         }
     }
 
     /**
      * 模式3: REPLAY — 执行已有脚本（零 LLM 调用）
      */
-    suspend fun replayScript(scriptId: String) = scope.launch {
+    fun replayScript(scriptId: String) = scope.launch {
         if (accessibilityService == null) {
             _status.value = OrchestratorStatus.ERROR
             return@launch
@@ -274,6 +273,7 @@ class ResumePilotOrchestrator(
             scriptName = scriptEntity.name,
             startedAt = System.currentTimeMillis(),
             success = false,
+            errorMessage = null,
             stepsCompleted = 0,
             stepsTotal = actions.size
         ))
@@ -298,7 +298,7 @@ class ResumePilotOrchestrator(
     /**
      * 模式4: HYBRID — 脚本执行中遇到异常时，LLM 介入修复
      */
-    suspend fun replayWithLLMFallback(scriptId: String) = scope.launch {
+    fun replayWithLLMFallback(scriptId: String) = scope.launch {
         if (accessibilityService == null || llmClient == null) {
             _status.value = OrchestratorStatus.ERROR
             return@launch

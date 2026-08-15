@@ -72,7 +72,7 @@ interface ScriptDao {
     suspend fun getRecentLogs(): List<ExecutionLogEntity>
 
     @Insert
-    suspend fun insertLog(log: ExecutionLogEntity)
+    suspend fun insertLog(log: ExecutionLogEntity): Long
 
     @Query("UPDATE execution_logs SET completed_at = :completedAt, success = :success, error_message = :error, steps_completed = :stepsCompleted WHERE id = :id")
     suspend fun updateLog(id: Long, completedAt: Long, success: Boolean, error: String?, stepsCompleted: Int)
