@@ -45,15 +45,15 @@ interface StatsDao {
 
 /** 平台汇总 */
 data class PlatformSummary(
-    val platformName: String = "",
-    val totalSuccess: Int = 0,
-    val totalFail: Int = 0
+    @ColumnInfo(name = "platform_name") val platformName: String = "",
+    @ColumnInfo(name = "total_success") val totalSuccess: Int = 0,
+    @ColumnInfo(name = "total_fail") val totalFail: Int = 0
 )
 
 /** 总计汇总 */
 data class TotalSummary(
-    val totalSuccess: Int = 0,
-    val totalFail: Int = 0
+    @ColumnInfo(name = "total_success") val totalSuccess: Int = 0,
+    @ColumnInfo(name = "total_fail") val totalFail: Int = 0
 )
 
 /**
@@ -87,12 +87,12 @@ interface ExecutionLogDao {
 data class DailyExecutionStat(
     val date: String = "",
     val total: Int = 0,
-    val successCount: Int = 0,
-    val failCount: Int = 0
+    @ColumnInfo(name = "success_count") val successCount: Int = 0,
+    @ColumnInfo(name = "fail_count") val failCount: Int = 0
 )
 
 data class PlatformExecutionStat(
     val platform: String = "",
     val total: Int = 0,
-    val successCount: Int = 0
+    @ColumnInfo(name = "success_count") val successCount: Int = 0
 )
