@@ -7,6 +7,7 @@ import com.resumepilot.app.llm.LLMConfig
 import com.resumepilot.app.llm.LLMProvider
 import com.resumepilot.app.util.CryptoManager
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
@@ -29,17 +30,23 @@ class PreferencesManager(private val context: Context) {
     }
 
     // ====== LLM 配置 ======
-    val llmConfigFlow: Flow<LLMConfig> = context.dataStore.data.map { prefs ->
-        LLMConfig(
-            provider = LLMProvider.fromName(prefs[LLM_PROVIDER] ?: "OpenAI"),
-            // API Key 加密存储；解密失败时兼容旧版本明文
-            apiKey = CryptoManager.decrypt(prefs[LLM_API_KEY]) ?: prefs[LLM_API_KEY] ?: "",
-            baseUrl = prefs[LLM_BASE_URL] ?: "",
-            modelName = prefs[LLM_MODEL_NAME] ?: "gpt-4o",
-            temperature = prefs[LLM_TEMPERATURE] ?: 0.1f,
-            maxTokens = prefs[LLM_MAX_TOKENS] ?: 4096
-        )
-    }
+    // catch: DataStore 文件损坏/IO 异常时回退默认配置，避免启动崩溃
+    val llmConfigFlow: Flow<LLMConfig> = context.dataStore.data
+        .catch { e ->
+            android.util.Log.w("PreferencesManager", "读取配置失败，使用默认值: ${e.message}")
+            emit(emptyPreferences())
+        }
+        .map { prefs ->
+            LLMConfig(
+                provider = LLMProvider.fromName(prefs[LLM_PROVIDER] ?: "OpenAI"),
+                // API Key 加密存储；解密失败时兼容旧版本明文
+                apiKey = CryptoManager.decrypt(prefs[LLM_API_KEY]) ?: prefs[LLM_API_KEY] ?: "",
+                baseUrl = prefs[LLM_BASE_URL] ?: "",
+                modelName = prefs[LLM_MODEL_NAME] ?: "gpt-4o",
+                temperature = prefs[LLM_TEMPERATURE] ?: 0.1f,
+                maxTokens = prefs[LLM_MAX_TOKENS] ?: 4096
+            )
+        }
 
     suspend fun getLLMConfig(): LLMConfig = llmConfigFlow.first()
 

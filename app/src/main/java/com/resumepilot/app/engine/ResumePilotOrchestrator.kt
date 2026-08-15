@@ -33,7 +33,7 @@ import java.io.ByteArrayOutputStream
  */
 class ResumePilotOrchestrator(
     private val context: Context,
-    private val accessibilityService: RPAAccessibilityService?,
+    accessibilityService: RPAAccessibilityService?,
     private val db: AppDatabase,
     private val preferences: com.resumepilot.app.data.PreferencesManager,
     /** 屏幕截图捕获器（需先完成 MediaProjection 授权）；null 时降级为纯文本模式 */
@@ -43,8 +43,18 @@ class ResumePilotOrchestrator(
 ) {
     private var llmClient: LLMClient? = null
     private var scriptGenerator: ScriptGenerator? = null
+
+    /** 无障碍服务实例：可在服务重连后用 [updateAccessibilityService] 动态刷新 */
+    @Volatile
+    private var accessibilityService: RPAAccessibilityService? = accessibilityService
+
     private val scope = scope
     private val gson = Gson()
+
+    /** 刷新无障碍服务实例（用户重开无障碍服务后调用，避免快照过期） */
+    fun updateAccessibilityService(service: RPAAccessibilityService?) {
+        accessibilityService = service
+    }
 
     // 状态流
     private val _status = MutableStateFlow(OrchestratorStatus.IDLE)
@@ -100,9 +110,15 @@ class ResumePilotOrchestrator(
      * 模式1: EXPLORE — LLM 自主探索，记录轨迹
      */
     fun startExploring(taskDescription: String) = scope.launch {
-        if (llmClient == null || accessibilityService == null) {
+        if (llmClient == null) {
             _status.value = OrchestratorStatus.ERROR
-            _log.value = "LLM 未配置或无障碍服务未连接"
+            _log.value = "LLM 未配置"
+            return@launch
+        }
+        // 局部快照（elvis 确保非空），避免 @Volatile var 智能转换失效
+        val service = accessibilityService ?: run {
+            _status.value = OrchestratorStatus.ERROR
+            _log.value = "无障碍服务未连接"
             return@launch
         }
 
@@ -129,7 +145,7 @@ class ResumePilotOrchestrator(
             } else null
 
             // 2. 获取控件树
-            val uiTree = accessibilityService.getUITree()
+            val uiTree = service.getUITree()
 
             // 3. LLM 决策下一步（纯文本模型内部会自动走 MCP 工具路径）
             val decision = llmClient!!.decideNextAction(
@@ -149,7 +165,7 @@ class ResumePilotOrchestrator(
                     appendLog("步骤 ${stepCount + 1}: ${action::class.simpleName} - ${action.description()}")
 
                     // 4. RPA 执行
-                    val success = accessibilityService.executeAction(action)
+                    val success = service.executeAction(action)
 
                     // 5. 记录轨迹
                     currentTrajectorySteps.add(TrajectoryStep(
@@ -265,7 +281,8 @@ class ResumePilotOrchestrator(
      * 模式3: REPLAY — 执行已有脚本（零 LLM 调用）
      */
     fun replayScript(scriptId: String) = scope.launch {
-        if (accessibilityService == null) {
+        // 局部快照（elvis 确保非空），避免 @Volatile var 智能转换失效
+        val service = accessibilityService ?: run {
             _status.value = OrchestratorStatus.ERROR
             return@launch
         }
@@ -293,7 +310,7 @@ class ResumePilotOrchestrator(
         ))
 
         // 执行
-        val result = accessibilityService.executeActions(actions)
+        val result = service.executeActions(actions)
 
         // 更新日志和统计
         db.scriptDao().updateLog(
@@ -313,7 +330,12 @@ class ResumePilotOrchestrator(
      * 模式4: HYBRID — 脚本执行中遇到异常时，LLM 介入修复
      */
     fun replayWithLLMFallback(scriptId: String) = scope.launch {
-        if (accessibilityService == null || llmClient == null) {
+        if (llmClient == null) {
+            _status.value = OrchestratorStatus.ERROR
+            return@launch
+        }
+        // 局部快照（elvis 确保非空），避免 @Volatile var 智能转换失效
+        val service = accessibilityService ?: run {
             _status.value = OrchestratorStatus.ERROR
             return@launch
         }
@@ -330,7 +352,7 @@ class ResumePilotOrchestrator(
         val maxRetries = 3
 
         while (retryCount < maxRetries) {
-            val result = accessibilityService.executeActions(actions)
+            val result = service.executeActions(actions)
 
             if (result.success) {
                 appendLog("混合模式回放成功！")
@@ -342,7 +364,7 @@ class ResumePilotOrchestrator(
             appendLog("第 $retryCount 次失败，LLM 尝试修复...")
 
             val screenshot = if (isVisionModel()) captureScreenshot() else null
-            val uiTree = accessibilityService.getUITree()
+            val uiTree = service.getUITree()
 
             val decision = client.decideNextAction(
                 taskDescription = "修复自动化流程，当前在执行: ${scriptEntity.name}，第 ${result.completedSteps + 1} 步失败",

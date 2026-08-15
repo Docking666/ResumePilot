@@ -589,7 +589,31 @@ class LLMClient(val config: LLMConfig) {
         return if (start >= 0 && end > start) text.substring(start, end + 1) else "{}"
     }
 
-    private suspend fun Call.await(): Response = withContext(Dispatchers.IO) {
-        execute()
+    /**
+     * 带指数退避重试的 HTTP 执行（业界最佳实践）：
+     * - 网络错误（IO 异常/超时）与 5xx 服务端错误自动重试，最多 [RETRY_TIMES] 次
+     * - 退避策略：1s → 2s → 4s（指数增长）
+     * - 4xx 客户端错误（如 API Key 无效）不重试，快速失败
+     */
+    private suspend fun Call.await(): Response {
+        var lastError: Exception? = null
+        repeat(RETRY_TIMES) { attempt ->
+            try {
+                val response = execute()
+                // 成功或 4xx（客户端错误）直接返回；5xx 关闭响应体后重试
+                if (response.isSuccessful || response.code < 500) return response
+                response.body?.close()
+            } catch (e: Exception) {
+                lastError = e
+            }
+            if (attempt < RETRY_TIMES - 1) {
+                kotlinx.coroutines.delay(1000L shl attempt)
+            }
+        }
+        throw lastError ?: java.io.IOException("HTTP 请求失败（已重试 $RETRY_TIMES 次）")
+    }
+
+    private companion object {
+        const val RETRY_TIMES = 3
     }
 }

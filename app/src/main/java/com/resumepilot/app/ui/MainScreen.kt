@@ -181,6 +181,8 @@ fun RecordingScreen() {
             logText += "[错误] 无障碍服务未开启，请先在系统设置中开启「简历投递助手」\n"
             return
         }
+        // 刷新编排器持有的服务实例（防止组合时快照过期）
+        orchestrator.updateAccessibilityService(svc)
         scope.launch {
             val config = app.preferences.getLLMConfig()
             if (config.apiKey.isBlank()) {
@@ -1001,24 +1003,29 @@ fun SettingsScreen() {
         }
 
         item {
+            // 权限引导：点击各项跳转系统设置（电池优化/悬浮窗/无障碍）
+            val activity = LocalContext.current as? com.resumepilot.app.MainActivity
             PermissionItem(
                 title = "无障碍服务",
                 description = "用于执行自动化点击、滑动等操作",
-                icon = Icons.Default.Visibility
+                icon = Icons.Default.Visibility,
+                onClick = { activity?.openAccessibilitySettings() }
             )
             PermissionItem(
                 title = "悬浮窗权限",
                 description = "用于显示录制控制浮标",
-                icon = Icons.Default.Widgets
+                icon = Icons.Default.Widgets,
+                onClick = { activity?.requestOverlayPermission() }
             )
             PermissionItem(
                 title = "忽略电池优化",
                 description = "确保后台任务持续运行",
-                icon = Icons.Default.BatterySaver
+                icon = Icons.Default.BatterySaver,
+                onClick = { activity?.requestBatteryOptimization() }
             )
             PermissionItem(
                 title = "截图权限",
-                description = "用于 LLM 分析屏幕内容",
+                description = "用于 LLM 分析屏幕内容，在「引导」或「执行」页自动请求",
                 icon = Icons.Default.Screenshot
             )
         }
@@ -1118,12 +1125,15 @@ fun MCPStatusCard() {
 fun PermissionItem(
     title: String,
     description: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    /** 提供 onClick 时整行可点击，用于引导用户去系统设置开启对应权限 */
+    onClick: (() -> Unit)? = null
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .padding(vertical = 8.dp)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
@@ -1136,14 +1146,16 @@ fun PermissionItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyMedium)
             Text(
-                description,
+                if (onClick != null) "$description（点击前往设置）" else description,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
             )
         }
-        Switch(
-            checked = true,
-            onCheckedChange = null
+        Icon(
+            if (onClick != null) Icons.Default.ChevronRight else Icons.Default.Check,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
         )
     }
 }

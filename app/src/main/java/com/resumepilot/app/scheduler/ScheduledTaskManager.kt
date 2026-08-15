@@ -1,11 +1,15 @@
 package com.resumepilot.app.scheduler
 
 import android.app.AlarmManager
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
+import androidx.core.app.NotificationCompat
 import com.resumepilot.app.ResumePilotApp
 import com.resumepilot.app.data.db.TemplateEntity
 import com.resumepilot.app.service.RPAAccessibilityService
@@ -265,10 +269,45 @@ class ScheduleReceiver : BroadcastReceiver() {
     }
 
     private fun sendNotification(context: Context, result: PipelineResult) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            // Android 13+ 需要 POST_NOTIFICATIONS 权限
+        try {
+            val channelId = "resume_pilot_schedule"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    channelId, "定时投递结果", NotificationManager.IMPORTANCE_DEFAULT
+                )
+                (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                    .createNotificationChannel(channel)
+            }
+
+            val title = if (result.success) "定时投递完成" else "定时投递已结束"
+            val detail = buildString {
+                append("成功 ${result.appliedCount} · 失败 ${result.failedCount} · 跳过 ${result.skippedCount}")
+                result.error?.let { append(" · $it") }
+            }
+
+            val notification = NotificationCompat.Builder(context, channelId)
+                .setSmallIcon(android.R.drawable.stat_notify_sync)
+                .setContentTitle(title)
+                .setContentText(detail)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(detail))
+                .setAutoCancel(true)
+                .build()
+
+            // Android 13+ 需要 POST_NOTIFICATIONS 运行时权限，未授权则仅打日志
+            val canNotify = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    androidx.core.content.ContextCompat.checkSelfPermission(
+                        context, android.Manifest.permission.POST_NOTIFICATIONS
+                    ) == PackageManager.PERMISSION_GRANTED
+
+            if (canNotify) {
+                val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                manager.notify(kotlin.random.Random.nextInt(1000, 9999), notification)
+            } else {
+                android.util.Log.i("ResumePilot-Schedule", "未授予通知权限，跳过通知: $detail")
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("ResumePilot-Schedule", "通知发送失败: ${e.message}")
         }
-        // 通知实现（简化，实际项目需要 NotificationManager）
         android.util.Log.i("ResumePilot-Schedule",
             "定时投递完成: ${result.appliedCount}成功, ${result.failedCount}失败")
     }
