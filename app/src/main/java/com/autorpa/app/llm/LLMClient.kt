@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit
  * LLM 客户端：统一接口对接多模型供应商
  * 支持 GPT-4o / Claude / 千问VL / DeepSeek / Gemini
  */
-class LLMClient(private val config: LLMConfig) {
+class LLMClient(val config: LLMConfig) {
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(60, TimeUnit.SECONDS)

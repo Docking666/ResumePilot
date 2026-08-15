@@ -16,6 +16,8 @@ import com.autorpa.app.service.RPAAccessibilityService
 import com.google.gson.Gson
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import java.io.ByteArrayOutputStream
 
 /**
@@ -272,6 +274,7 @@ class ResumePilotOrchestrator(
             scriptId = scriptEntity.id,
             scriptName = scriptEntity.name,
             startedAt = System.currentTimeMillis(),
+            completedAt = null,
             success = false,
             errorMessage = null,
             stepsCompleted = 0,

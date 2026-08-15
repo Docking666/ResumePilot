@@ -64,7 +64,8 @@ sealed class Action {
     /** 滚动列表 */
     data class Scroll(
         val direction: ScrollDirection,
-        val times: Int = 1
+        val times: Int = 1,
+        val description: String = ""
     ) : Action()
 
     /** 打开应用 */
