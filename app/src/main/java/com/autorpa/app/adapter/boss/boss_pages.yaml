@@ -1,0 +1,95 @@
+# BOSS直聘 引导截图配置
+# 用于 TemplateGenerator 指导用户截图，LLM 分析后生成模板
+platform: "BOSS直聘"
+package: "com.hpbr.bosszhipin"
+version: 1
+
+pages:
+  - key: "home"
+    title: "首页"
+    instruction: "请打开 BOSS直聘，停留在首页，确保可以看到底部Tab栏（职位/消息/我的）"
+    description: "BOSS直聘首页，顶部有搜索框，中部是职位推荐信息流，底部有Tab导航栏"
+    required: true
+    order: 1
+
+  - key: "search_result"
+    title: "搜索结果页"
+    instruction: "请在搜索框输入任意关键词（如'Java开发'），进入搜索结果页后截图"
+    description: "搜索结果列表页，包含职位卡片（标题、公司名、薪资范围、工作地点、发布时间）和顶部筛选条件"
+    required: true
+    order: 2
+
+  - key: "job_detail"
+    title: "职位详情页"
+    instruction: "请点击任意一个职位卡片，进入详情页后截图"
+    description: "职位详情页，包含公司信息、职位描述、任职要求、薪资福利，底部有操作栏（投递/收藏/分享）"
+    required: true
+    order: 3
+
+  - key: "chat_greeting"
+    title: "打招呼页"
+    instruction: "请点击底部'投递'或'打招呼'按钮，进入聊天/打招呼页面后截图"
+    description: "聊天/打招呼页面，包含文本输入框、发送按钮、快捷打招呼语选项"
+    required: true
+    order: 4
+
+  - key: "chat_list"
+    title: "聊天列表"
+    instruction: "请返回消息Tab，进入聊天列表页（已投递过的职位列表）后截图"
+    description: "聊天列表页，显示已投递过的职位、HR回复状态、聊天记录预览"
+    required: false
+    order: 5
+
+workflows:
+  search_jobs:
+    description: "搜索岗位"
+    params: [keyword, city]
+    steps:
+      - id: step_1
+        action: launch_app
+        wait_after: 3000
+      - id: step_2
+        action: wait
+        millis: 2000
+      - id: step_3
+        action: find_and_click
+        target: "搜索框"
+        wait_after: 1000
+      - id: step_4
+        action: type
+        text: "{keyword}"
+        wait_after: 1000
+      - id: step_5
+        action: find_and_click
+        target: "搜索按钮"
+        wait_after: 2000
+      - id: step_6
+        action: scroll
+        direction: down
+        wait_after: 500
+
+  apply_job:
+    description: "投递当前职位"
+    params: [greeting_text]
+    steps:
+      - id: step_1
+        action: find_and_click
+        target: "投递按钮"
+        max_retries: 2
+        wait_after: 2000
+      - id: step_2
+        action: find_and_click
+        target: "打招呼输入框"
+        wait_after: 1000
+      - id: step_3
+        action: type
+        text: "{greeting_text}"
+        wait_after: 1000
+      - id: step_4
+        action: find_and_click
+        target: "发送按钮"
+        max_retries: 2
+        wait_after: 1500
+      - id: step_5
+        action: back
+        wait_after: 1000

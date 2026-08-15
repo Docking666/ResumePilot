@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AutoRPA</string>
+    <string name="recording">录制中…</string>
+    <string name="stop_recording">停止录制</string>
+    <string name="replay">回放</string>
+    <string name="generate_script">生成脚本</string>
+    <string name="llm_settings">LLM 设置</string>
+    <string name="script_list">脚本列表</string>
+    <string name="enable_accessibility">请开启无障碍服务</string>
+</resources>

@@ -1,0 +1,40 @@
+# 猎聘 引导截图配置
+platform: "猎聘"
+package: "com.liepin.liepin"
+version: 1
+
+pages:
+  - key: "home"
+    title: "首页"
+    instruction: "请打开猎聘 App，停留在首页，确保可以看到底部Tab栏（职位/消息/发现/我的）"
+    description: "猎聘首页，顶部有搜索框和职位分类入口，中部是推荐职位信息流，底部有Tab导航栏"
+    required: true
+    order: 1
+
+  - key: "search_result"
+    title: "搜索结果页"
+    instruction: "请在搜索框输入任意关键词（如'Java'），进入搜索结果页后截图"
+    description: "搜索结果列表页，包含职位卡片（标题、公司名、薪资、学历要求、工作经验）和筛选条件"
+    required: true
+    order: 2
+
+  - key: "job_detail"
+    title: "职位详情页"
+    instruction: "请点击任意职位卡片，进入详情页后截图"
+    description: "职位详情页，包含公司信息、职位描述、任职要求，底部有操作栏（立即沟通/投递简历/收藏）"
+    required: true
+    order: 3
+
+  - key: "chat_greeting"
+    title: "沟通页"
+    instruction: "请点击'立即沟通'按钮，进入聊天页面后截图"
+    description: "聊天/沟通页面，包含文本输入框、发送按钮、快捷回复选项"
+    required: true
+    order: 4
+
+  - key: "chat_list"
+    title: "消息列表"
+    instruction: "请返回消息Tab，进入消息列表页后截图"
+    description: "消息列表页，显示已沟通过的职位记录和HR回复状态"
+    required: false
+    order: 5
