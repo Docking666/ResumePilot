@@ -1,4 +1,4 @@
-# AutoRPA ProGuard Rules
+# ResumePilot ProGuard Rules
 -keepattributes *Annotation*
 -keepattributes SourceFile,LineNumberTable
 
@@ -11,5 +11,5 @@
 -keep class com.google.gson.** { *; }
 
 # Keep our data classes
--keep class com.autorpa.app.data.** { *; }
--keep class com.autorpa.app.engine.** { *; }
+-keep class com.resumepilot.app.data.** { *; }
+-keep class com.resumepilot.app.engine.** { *; }

@@ -1,4 +1,4 @@
-# AutoRPA — 免录制自动化投递方案
+# 简历投递助手 (ResumePilot) — 免录制自动化投递方案
 
 ## 一、核心理念
 
@@ -250,7 +250,7 @@ class BatchScheduler {
 ### 首次使用：引导截图建模板
 
 ```
-1. 打开 AutoRPA App
+1. 打开简历投递助手 App
 2. 点击"添加平台"
 3. 选择 "BOSS直聘"
 4. App 弹出引导浮窗:
@@ -262,8 +262,8 @@ class BatchScheduler {
    │                                      │
    │     [打开 BOSS直聘]  [我已就绪]       │
    └─────────────────────────────────────┘
-5. 用户打开 BOSS直聘 → 回到 AutoRPA → 点"我已就绪"
-6. AutoRPA 自动截图（通过 MediaProjection）
+5. 用户打开 BOSS直聘 → 回到简历投递助手 → 点"我已就绪"
+6. 简历投递助手自动截图（通过 MediaProjection）
 7. 发送给 LLM 分析 → 显示分析结果:
    ┌─────────────────────────────────────┐
    │  ✅ 首页分析完成                     │
@@ -283,7 +283,7 @@ class BatchScheduler {
 ### 日常使用：一键执行
 
 ```
-1. 打开 AutoRPA
+1. 打开简历投递助手
 2. 选择 "BOSS直聘" 脚本
 3. 输入关键词: "Java开发"
 4. 点击 "开始执行"
@@ -418,7 +418,7 @@ steps:
 ## 八、文件清单 (新增)
 
 ```
-app/src/main/java/com/autorpa/app/adapter/
+app/src/main/java/com/resumepilot/app/adapter/
 ├── PlatformAdapter.kt           # 适配器接口
 ├── PlatformTemplate.kt          # 模板数据模型
 ├── TemplateGenerator.kt         # 模板生成引擎 (LLM 截图分析)
@@ -428,12 +428,12 @@ app/src/main/java/com/autorpa/app/adapter/
     ├── BossAdapter.kt           # BOSS直聘适配器
     └── boss_pages.yaml          # 预置的页面截图清单
 
-app/src/main/java/com/autorpa/app/ui/
+app/src/main/java/com/resumepilot/app/ui/
 ├── SetupGuideScreen.kt          # 引导截图界面
 ├── TemplatePreviewScreen.kt     # 模板预览确认界面
 └── ExecutionScreen.kt           # 执行过程界面
 
-app/src/main/java/com/autorpa/app/data/db/
+app/src/main/java/com/resumepilot/app/data/db/
 ├── TemplateEntity.kt            # 模板数据库实体
 ├── TemplateDao.kt               # 模板 DAO
 └── ExecutionRecord.kt           # 执行记录实体

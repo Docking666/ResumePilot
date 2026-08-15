@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.autorpa.app"
+    namespace = "com.resumepilot.app"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.autorpa.app"
+        applicationId = "com.resumepilot.app"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
