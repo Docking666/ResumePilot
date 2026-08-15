@@ -50,67 +50,72 @@ class ScreenshotCapture(private val context: Context) {
      * 应在后台线程调用
      */
     fun captureScreenshot(): String? {
-        val mp = mediaProjection ?: return null
+        try {
+            val mp = mediaProjection ?: return null
 
-        val metrics = context.resources.displayMetrics
-        val width = metrics.widthPixels
-        val height = metrics.heightPixels
-        val density = metrics.densityDpi
+            val metrics = context.resources.displayMetrics
+            val width = metrics.widthPixels
+            val height = metrics.heightPixels
+            val density = metrics.densityDpi
 
-        val reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
-        val latch = CountDownLatch(1)
-        var bitmap: Bitmap? = null
+            val reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+            val latch = CountDownLatch(1)
+            var bitmap: Bitmap? = null
 
-        val handler = Handler(Looper.getMainLooper())
-        reader.setOnImageAvailableListener({ r ->
-            val image = r.acquireLatestImage()
-            if (image != null) {
-                val planes = image.planes
-                if (planes.isNotEmpty()) {
-                    val buffer = planes[0].buffer
-                    val pixelStride = planes[0].pixelStride
-                    val rowStride = planes[0].rowStride
-                    val rowPadding = rowStride - pixelStride * width
-                    val bmp = Bitmap.createBitmap(
-                        width + rowPadding / pixelStride,
-                        height, Bitmap.Config.ARGB_8888
-                    )
-                    buffer.position(0)
-                    bmp.copyPixelsFromBuffer(buffer)
-                    bitmap = if (bmp.width > width) {
-                        Bitmap.createBitmap(bmp, 0, 0, width, height)
-                    } else bmp
+            val handler = Handler(Looper.getMainLooper())
+            reader.setOnImageAvailableListener({ r ->
+                val image = r.acquireLatestImage()
+                if (image != null) {
+                    val planes = image.planes
+                    if (planes.isNotEmpty()) {
+                        val buffer = planes[0].buffer
+                        val pixelStride = planes[0].pixelStride
+                        val rowStride = planes[0].rowStride
+                        val rowPadding = rowStride - pixelStride * width
+                        val bmp = Bitmap.createBitmap(
+                            width + rowPadding / pixelStride,
+                            height, Bitmap.Config.ARGB_8888
+                        )
+                        buffer.position(0)
+                        bmp.copyPixelsFromBuffer(buffer)
+                        bitmap = if (bmp.width > width) {
+                            Bitmap.createBitmap(bmp, 0, 0, width, height)
+                        } else bmp
+                    }
+                    image.close()
                 }
-                image.close()
+                latch.countDown()
+            }, handler)
+
+            val vd = mp.createVirtualDisplay(
+                "ScreenshotCapture", width, height, density,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                reader.surface, null, null
+            )
+
+            // 等待最多 3 秒让帧到达
+            latch.await(3000, TimeUnit.MILLISECONDS)
+
+            vd.release()
+            reader.close()
+
+            val result = bitmap?.let { bmp ->
+                val out = ByteArrayOutputStream()
+                bmp.compress(Bitmap.CompressFormat.PNG, 80, out)
+                val bytes = out.toByteArray()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    java.util.Base64.getEncoder().encodeToString(bytes)
+                } else {
+                    @Suppress("DEPRECATION")
+                    android.util.Base64.encodeToString(bytes, android.util.Base64.DEFAULT)
+                }
             }
-            latch.countDown()
-        }, handler)
-
-        val vd = mp.createVirtualDisplay(
-            "ScreenshotCapture", width, height, density,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            reader.surface, null, null
-        )
-
-        // 等待最多 1.5 秒让帧到达
-        latch.await(1500, TimeUnit.MILLISECONDS)
-
-        vd.release()
-        reader.close()
-
-        val result = bitmap?.let { bmp ->
-            val out = ByteArrayOutputStream()
-            bmp.compress(Bitmap.CompressFormat.PNG, 80, out)
-            val bytes = out.toByteArray()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                java.util.Base64.getEncoder().encodeToString(bytes)
-            } else {
-                @Suppress("DEPRECATION")
-                android.util.Base64.encodeToString(bytes, android.util.Base64.DEFAULT)
-            }
+            bitmap?.recycle()
+            return result
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return null
         }
-        bitmap?.recycle()
-        return result
     }
 
     /** 释放资源 */
