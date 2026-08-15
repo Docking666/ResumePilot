@@ -24,6 +24,13 @@ class RPAAccessibilityService : AccessibilityService() {
     lateinit var executor: ActionExecutor
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    companion object {
+        /** 当前运行中的无障碍服务实例（未启用时为 null） */
+        @Volatile
+        var instance: RPAAccessibilityService? = null
+            private set
+    }
+
     // 执行状态
     var isReplaying = false
         private set
@@ -32,17 +39,19 @@ class RPAAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        instance = this
         recorder = ActionRecorder(this)
         executor = ActionExecutor(this)
 
         // 注册 MCP 工具（为 DeepSeek 等纯文本模型提供视觉能力）
         val app = ResumePilotApp.instance
         val mcpManager = app.mcpGatewayManager
+        val service = this
         mcpManager.initialize {
-            register(ScreenAnalysisTool(this))
-            register(ScreenshotTool(this))
-            register(ExecuteActionTool(this))
-            register(FindElementTool(this))
+            register(ScreenAnalysisTool(service))
+            register(ScreenshotTool(service))
+            register(ExecuteActionTool(service))
+            register(FindElementTool(service))
             register(ScriptManagerTool(app.database))
             register(ResumeTool(app.resumeManager))
         }
@@ -129,6 +138,9 @@ class RPAAccessibilityService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        if (instance === this) {
+            instance = null
+        }
         scope.cancel()
         super.onDestroy()
     }

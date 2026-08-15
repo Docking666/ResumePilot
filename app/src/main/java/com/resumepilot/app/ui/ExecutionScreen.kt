@@ -30,6 +30,8 @@ import com.resumepilot.app.resume.GreetingMessage
 import com.resumepilot.app.resume.GreetingStyle
 import com.resumepilot.app.resume.JobDescription
 import com.resumepilot.app.resume.JobMatcher
+import com.resumepilot.app.service.RPAAccessibilityService
+import com.resumepilot.app.service.RecordingForegroundService
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -343,11 +345,21 @@ private suspend fun executeWorkflow(
     onLog: (String) -> Unit,
     onComplete: (Boolean) -> Unit
 ) {
+    // 从无障碍服务获取实例（服务未启用时为 null）
+    val accessibilityService = RPAAccessibilityService.instance
+
+    // 执行期间启动前台服务 + WakeLock，防止切后台后进程被杀/休眠；
+    // 结束后在 finally 中停止。
+    val keepAlive = accessibilityService != null
+    if (keepAlive) {
+        RecordingForegroundService.start(app)
+        onLog("[${timestamp()}] 已启用后台保活（前台服务 + 唤醒锁）")
+    }
+
     try {
         val template = PlatformTemplate.fromJson(templateEntity.templateJson)
         val config = app.preferences.getLLMConfig()
         val llmClient = LLMClient(config)
-        val accessibilityService = null // 需要从外部注入
 
         onLog("[${timestamp()}] 开始执行: ${template.platformName}")
         onLog("[${timestamp()}] 关键词: $keyword")
@@ -427,6 +439,11 @@ private suspend fun executeWorkflow(
     } catch (e: Exception) {
         onLog("[${timestamp()}] ❌ 异常: ${e.message ?: "未知错误"}")
         onComplete(false)
+    } finally {
+        // 无论成功失败都释放前台服务
+        if (keepAlive) {
+            RecordingForegroundService.stop(app)
+        }
     }
 }
 

@@ -1,6 +1,8 @@
 package com.resumepilot.app.ui
 
 import android.app.Activity
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
@@ -22,11 +24,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.resumepilot.app.ResumePilotApp
 import com.resumepilot.app.adapter.GuidePage
 import com.resumepilot.app.adapter.PlatformAdapter
 import com.resumepilot.app.adapter.PlatformTemplate
 import com.resumepilot.app.adapter.TemplateGenerationResult
+import com.resumepilot.app.service.RecordingForegroundService
 import com.resumepilot.app.service.ScreenshotCapture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -290,15 +294,45 @@ private fun ScreenshotGuideStep(
         ScreenshotCapture(context.applicationContext)
     }
 
+    // 通知权限（Android 13+ 前台服务通知需要；拒绝不影响服务运行，但最好引导开启）
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { }
+
     // MediaProjection 授权 Launcher
     val screenCaptureLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            screenshotCapture.onActivityResult(result.resultCode, result.data)
-            isAuthorized = true
-            // 授权成功后，立即自动截图当前页面
-            autoCapture(scope, screenshotCapture, currentPage, isCapturing, captureError, onScreenshotTaken)
+            // Android 14+ 上必须先启动 mediaProjection 前台服务才能 getMediaProjection
+            val ok = screenshotCapture.onActivityResult(result.resultCode, result.data)
+            if (ok) {
+                isAuthorized = true
+                captureError = null
+                // 授权成功后，立即自动截图当前页面
+                autoCapture(
+                    scope, screenshotCapture, currentPage,
+                    onStart = {
+                        isCapturing = true
+                        captureError = null
+                    },
+                    onResult = { base64 ->
+                        isCapturing = false
+                        if (base64 != null) {
+                            currentPage?.key?.let { key -> onScreenshotTaken(key, base64) }
+                        } else {
+                            captureError = "截图失败，请确保屏幕已解锁并重试"
+                        }
+                    }
+                )
+            } else {
+                isCapturing = false
+                captureError = if (screenshotCapture.requiresForegroundService()) {
+                    "屏幕捕获授权失败：未启动前台服务，请重试"
+                } else {
+                    "屏幕捕获授权失败，请重试"
+                }
+            }
         } else {
             isCapturing = false
             captureError = "用户拒绝了屏幕捕获授权"
@@ -310,15 +344,37 @@ private fun ScreenshotGuideStep(
         if (currentPage == null) return@LaunchedEffect
 
         if (!isAuthorized && !hasTriggeredAuth) {
-            // 首次进入 - 自动弹出授权对话框
+            // 首次进入 - 先启动前台服务（Android 14 强制要求），再自动弹出授权对话框
             hasTriggeredAuth = true
             isCapturing = true
+            RecordingForegroundService.start(context)
+            // Android 13+ 顺便请求通知权限（非阻塞）
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
             screenCaptureLauncher.launch(screenshotCapture.createScreenCaptureIntent())
         } else if (isAuthorized) {
             // 已授权 - 自动截图（给 1.5s 让用户看到引导提示）
             kotlinx.coroutines.delay(1500)
             if (currentPageIndex == 0 || isCapturing.not()) {
-                autoCapture(scope, screenshotCapture, currentPage, isCapturing, captureError, onScreenshotTaken)
+                autoCapture(
+                    scope, screenshotCapture, currentPage,
+                    onStart = {
+                        isCapturing = true
+                        captureError = null
+                    },
+                    onResult = { base64 ->
+                        isCapturing = false
+                        if (base64 != null) {
+                            currentPage?.key?.let { key -> onScreenshotTaken(key, base64) }
+                        } else {
+                            captureError = "截图失败，请确保屏幕已解锁并重试"
+                        }
+                    }
+                )
             }
         }
     }
@@ -438,6 +494,7 @@ private fun ScreenshotGuideStep(
                         TextButton(onClick = {
                             captureError = null
                             isCapturing = true
+                            RecordingForegroundService.start(context)
                             screenCaptureLauncher.launch(screenshotCapture.createScreenCaptureIntent())
                         }) {
                             Text("重试", style = MaterialTheme.typography.bodySmall)
@@ -476,22 +533,15 @@ private fun autoCapture(
     scope: CoroutineScope,
     screenshotCapture: ScreenshotCapture,
     currentPage: GuidePage?,
-    isCapturing: MutableState<Boolean>,
-    captureError: MutableState<String?>,
-    onScreenshotTaken: (String, String) -> Unit
+    onStart: () -> Unit,
+    onResult: (String?) -> Unit
 ) {
     if (currentPage == null) return
-    isCapturing.value = true
-    captureError.value = null
+    onStart()
     scope.launch(Dispatchers.IO) {
         val base64 = screenshotCapture.captureScreenshot()
         withContext(Dispatchers.Main) {
-            isCapturing.value = false
-            if (base64 != null) {
-                onScreenshotTaken(currentPage.key, base64)
-            } else {
-                captureError.value = "截图失败，请确保屏幕已解锁并重试"
-            }
+            onResult(base64)
         }
     }
 }

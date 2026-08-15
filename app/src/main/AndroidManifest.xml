@@ -10,6 +10,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
 
+    <!-- 通知权限：Android 13+ 前台服务通知 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- 唤醒锁：防止后台执行时 CPU 休眠导致自动化中断 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <!-- 悬浮窗权限：录制控制浮标 -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
@@ -56,11 +62,12 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
-        <!-- 前台服务：录制和截图 -->
+        <!-- 前台服务：录制和截图（stopWithTask=false 保证划掉任务后仍继续执行） -->
         <service
             android:name=".service.RecordingForegroundService"
             android:foregroundServiceType="mediaProjection"
-            android:exported="false" />
+            android:exported="false"
+            android:stopWithTask="false" />
 
         <!-- 定时任务广播接收器 -->
         <receiver

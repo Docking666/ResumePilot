@@ -35,11 +35,15 @@ class ResumePilotOrchestrator(
     private val context: Context,
     private val accessibilityService: RPAAccessibilityService?,
     private val db: AppDatabase,
-    private val preferences: com.resumepilot.app.data.PreferencesManager
+    private val preferences: com.resumepilot.app.data.PreferencesManager,
+    /** 屏幕截图捕获器（需先完成 MediaProjection 授权）；null 时降级为纯文本模式 */
+    private val screenshotCapture: com.resumepilot.app.service.ScreenshotCapture? = null,
+    /** 协程作用域：传入应用级作用域可让任务在 Activity 销毁后继续执行 */
+    scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 ) {
     private var llmClient: LLMClient? = null
     private var scriptGenerator: ScriptGenerator? = null
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = scope
     private val gson = Gson()
 
     // 状态流
@@ -376,18 +380,9 @@ class ResumePilotOrchestrator(
     }
 
     private fun captureScreenshot(): String? {
-        // 通过 AccessibilityService 的 takeScreenshot API
+        // 通过已授权的 ScreenshotCapture（MediaProjection）截图
         return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                val bitmap = accessibilityService?.let {
-                    // 使用 MediaProjection 截图（需要用户授权）
-                    null
-                }
-                // 备选：通过无障碍服务获取截图
-                null
-            } else {
-                null
-            }
+            screenshotCapture?.captureScreenshot()
         } catch (e: Exception) {
             null
         }
