@@ -46,12 +46,19 @@ fun DashboardScreen() {
     var todayStats by remember { mutableStateOf<TodayStats?>(null) }
     var isLoading by remember { mutableStateOf(true) }
 
-    // 加载数据
+    // 加载数据（防止数据库未初始化时闪退）
     LaunchedEffect(Unit) {
-        isLoading = true
-        dashboardData = statsService.getDashboardData()
-        todayStats = statsService.getTodayStats()
-        isLoading = false
+        try {
+            isLoading = true
+            dashboardData = statsService.getDashboardData()
+            todayStats = statsService.getTodayStats()
+        } catch (e: Exception) {
+            // 数据库未初始化时忽略错误，显示空状态
+            dashboardData = DashboardData()
+            todayStats = TodayStats()
+        } finally {
+            isLoading = false
+        }
     }
 
     Scaffold(

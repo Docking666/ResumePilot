@@ -282,6 +282,7 @@ private fun ScreenshotGuideStep(
     val currentPage = pages.getOrNull(currentPageIndex)
     var isCapturing by remember { mutableStateOf(false) }
     var captureError by remember { mutableStateOf<String?>(null) }
+    var isAuthorized by remember { mutableStateOf(false) }
 
     // 截图捕获实例（记住，不随重组重建）
     val screenshotCapture = remember {
@@ -294,22 +295,21 @@ private fun ScreenshotGuideStep(
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             screenshotCapture.onActivityResult(result.resultCode, result.data)
+            isAuthorized = true
             // 授权成功后自动截图
-            isCapturing = true
-            scope.launch(Dispatchers.IO) {
-                val base64 = screenshotCapture.captureScreenshot()
-                withContext(Dispatchers.Main) {
-                    isCapturing = false
-                    if (base64 != null) {
-                        onScreenshotTaken(currentPage!!.key, base64)
-                    } else {
-                        captureError = "截图失败，请检查屏幕捕获权限"
-                    }
-                }
-            }
+            autoCaptureScreenshot(scope, screenshotCapture, currentPage, isCapturing, captureError, onScreenshotTaken)
         } else {
             isCapturing = false
             captureError = "用户拒绝了屏幕捕获授权"
+        }
+    }
+
+    // 已授权后，页面切换时自动截图
+    LaunchedEffect(currentPageIndex, isAuthorized) {
+        if (isAuthorized && currentPageIndex > 0 && currentPage != null) {
+            // 给用户一点时间看到引导提示，然后自动截图
+            kotlinx.coroutines.delay(1200)
+            autoCaptureScreenshot(scope, screenshotCapture, currentPage, isCapturing, captureError, onScreenshotTaken)
         }
     }
 
@@ -392,6 +392,30 @@ private fun ScreenshotGuideStep(
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            // 自动截图倒计时提示
+            if (isAuthorized && currentPageIndex > 0) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("即将自动截图...", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
             // 错误提示
             captureError?.let { error ->
                 Card(
@@ -415,51 +439,33 @@ private fun ScreenshotGuideStep(
                 Spacer(modifier = Modifier.height(12.dp))
             }
 
-            // 操作按钮
-            Button(
-                onClick = {
-                    captureError = null
-                    if (!screenshotCapture.isAuthorized()) {
-                        // 尚未授权，请求屏幕捕获权限
+            // 操作按钮（首次授权用，后续自动截图）
+            if (!isAuthorized) {
+                Button(
+                    onClick = {
+                        captureError = null
                         isCapturing = true
                         screenCaptureLauncher.launch(screenshotCapture.createScreenCaptureIntent())
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    enabled = !isCapturing
+                ) {
+                    if (isCapturing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("截图中...", fontSize = 16.sp)
                     } else {
-                        // 已授权，直接截图
-                        isCapturing = true
-                        scope.launch(Dispatchers.IO) {
-                            val base64 = screenshotCapture.captureScreenshot()
-                            withContext(Dispatchers.Main) {
-                                isCapturing = false
-                                if (base64 != null) {
-                                    onScreenshotTaken(currentPage.key, base64)
-                                } else {
-                                    captureError = "截图失败，请重试"
-                                }
-                            }
-                        }
+                        Icon(Icons.Default.CameraAlt, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("授权并截图", fontSize = 16.sp)
                     }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(16.dp),
-                enabled = !isCapturing
-            ) {
-                if (isCapturing) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("截图中...", fontSize = 16.sp)
-                } else {
-                    Icon(Icons.Default.CameraAlt, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        if (screenshotCapture.isAuthorized()) "截图并确认" else "授权并截图",
-                        fontSize = 16.sp
-                    )
                 }
             }
 
@@ -480,6 +486,31 @@ private fun ScreenshotGuideStep(
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
             textAlign = TextAlign.Center
         )
+    }
+}
+
+/** 执行截图并回调 */
+private fun autoCaptureScreenshot(
+    scope: CoroutineScope,
+    screenshotCapture: ScreenshotCapture,
+    currentPage: GuidePage?,
+    isCapturing: MutableState<Boolean>,
+    captureError: MutableState<String?>,
+    onScreenshotTaken: (String, String) -> Unit
+) {
+    if (currentPage == null) return
+    isCapturing.value = true
+    captureError.value = null
+    scope.launch(Dispatchers.IO) {
+        val base64 = screenshotCapture.captureScreenshot()
+        withContext(Dispatchers.Main) {
+            isCapturing.value = false
+            if (base64 != null) {
+                onScreenshotTaken(currentPage.key, base64)
+            } else {
+                captureError.value = "截图失败，请重试"
+            }
+        }
     }
 }
 
