@@ -19,7 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.autorpa.app.AutoRPAApp
+import com.autorpa.app.ResumePilotApp
 import com.autorpa.app.data.DashboardData
 import com.autorpa.app.data.PlatformStat
 import com.autorpa.app.data.StatsService
@@ -38,7 +38,7 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen() {
-    val app = AutoRPAApp.instance
+    val app = ResumePilotApp.instance
     val scope = rememberCoroutineScope()
     val statsService = remember { StatsService(app) }
 

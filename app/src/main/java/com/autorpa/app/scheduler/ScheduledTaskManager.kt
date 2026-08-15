@@ -6,7 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import com.autorpa.app.AutoRPAApp
+import com.autorpa.app.ResumePilotApp
 import com.autorpa.app.data.db.TemplateEntity
 import kotlinx.coroutines.flow.first
 import java.util.Calendar
@@ -194,7 +194,7 @@ class ScheduleReceiver : BroadcastReceiver() {
 
         // 在后台协程中执行投递
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-            val app = AutoRPAApp.instance
+            val app = ResumePilotApp.instance
             val templateEntity = app.database.templateDao().getTemplateById(templateId) ?: return@launch
             val template = com.autorpa.app.adapter.PlatformTemplate.fromJson(templateEntity.templateJson)
             val config = app.preferences.getLLMConfig()

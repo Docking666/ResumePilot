@@ -17,7 +17,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.autorpa.app.service.RPAAccessibilityService
 import com.autorpa.app.ui.MainScreen
-import com.autorpa.app.ui.theme.AutoRPATheme
+import com.autorpa.app.ui.theme.ResumePilotTheme
 
 class MainActivity : ComponentActivity() {
 
@@ -25,7 +25,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            AutoRPATheme {
+            ResumePilotTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

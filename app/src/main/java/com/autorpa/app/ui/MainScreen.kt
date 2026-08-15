@@ -20,16 +20,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.autorpa.app.AutoRPAApp
+import com.autorpa.app.ResumePilotApp
 import com.autorpa.app.data.db.ScriptEntity
 import com.autorpa.app.data.db.ExecutionLogEntity
-import com.autorpa.app.engine.AutoRPAOrchestrator
+import com.autorpa.app.engine.ResumePilotOrchestrator
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen() {
-    val app = AutoRPAApp.instance
+    val app = ResumePilotApp.instance
     val scope = rememberCoroutineScope()
     val scripts = remember { mutableStateListOf<ScriptEntity>() }
     val logs = remember { mutableStateListOf<ExecutionLogEntity>() }
@@ -300,7 +300,7 @@ fun ScriptListScreen(
 
 @Composable
 fun ScriptCard(script: ScriptEntity, onRefresh: () -> Unit) {
-    val app = AutoRPAApp.instance
+    val app = ResumePilotApp.instance
     val scope = rememberCoroutineScope()
 
     Card(
@@ -446,7 +446,7 @@ fun LogScreen(logs: List<ExecutionLogEntity>) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ResumeScreen() {
-    val app = AutoRPAApp.instance
+    val app = ResumePilotApp.instance
     val scope = rememberCoroutineScope()
     val resume by app.resumeManager.activeResume.collectAsState()
     var showUploadDialog by remember { mutableStateOf(false) }
@@ -690,7 +690,7 @@ fun ResumeScreen() {
 
 @Composable
 fun SettingsScreen() {
-    val app = AutoRPAApp.instance
+    val app = ResumePilotApp.instance
     val scope = rememberCoroutineScope()
     var llmProvider by remember { mutableStateOf("OpenAI") }
     var apiKey by remember { mutableStateOf("") }

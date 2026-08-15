@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">AutoRPA</string>
+    <string name="app_name">简历投递助手</string>
     <string name="recording">录制中…</string>
     <string name="stop_recording">停止录制</string>
     <string name="replay">回放</string>

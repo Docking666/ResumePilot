@@ -1,6 +1,6 @@
 package com.autorpa.app.scheduler
 
-import com.autorpa.app.AutoRPAApp
+import com.autorpa.app.ResumePilotApp
 import com.autorpa.app.adapter.PlatformTemplate
 import com.autorpa.app.adapter.WorkflowEngine
 import com.autorpa.app.adapter.WorkflowResult
@@ -58,7 +58,7 @@ class BatchScheduler(
         template: PlatformTemplate,
         config: PipelineConfig
     ): PipelineResult = withContext(Dispatchers.IO) {
-        val app = AutoRPAApp.instance
+        val app = ResumePilotApp.instance
         val startTime = System.currentTimeMillis()
         stats = BatchStats(templateName = template.platformName)
         cancelled = false
@@ -253,7 +253,7 @@ class BatchScheduler(
     }
 
     private suspend fun updateDailyStats(
-        app: AutoRPAApp,
+        app: ResumePilotApp,
         platformName: String,
         success: Int,
         fail: Int,

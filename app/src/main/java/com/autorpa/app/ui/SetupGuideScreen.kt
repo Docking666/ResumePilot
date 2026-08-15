@@ -18,7 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.autorpa.app.AutoRPAApp
+import com.autorpa.app.ResumePilotApp
 import com.autorpa.app.adapter.GuidePage
 import com.autorpa.app.adapter.PlatformAdapter
 import com.autorpa.app.adapter.PlatformTemplate
@@ -38,7 +38,7 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SetupGuideScreen() {
-    val app = AutoRPAApp.instance
+    val app = ResumePilotApp.instance
     val scope = rememberCoroutineScope()
     val adapters = remember { com.autorpa.app.adapter.PlatformAdapterFactory.getInstance().getAll() }
 
@@ -604,7 +604,7 @@ private fun CompleteStep(
 // ====== 业务逻辑 ======
 
 private suspend fun analyzeScreenshots(
-    app: AutoRPAApp,
+    app: ResumePilotApp,
     adapter: PlatformAdapter,
     screenshots: List<Pair<String, String>>,
     onResult: (TemplateGenerationResult) -> Unit
@@ -631,7 +631,7 @@ private suspend fun analyzeScreenshots(
 }
 
 private suspend fun saveTemplate(
-    app: AutoRPAApp,
+    app: ResumePilotApp,
     template: PlatformTemplate
 ) {
     val entity = com.autorpa.app.data.db.TemplateEntity(

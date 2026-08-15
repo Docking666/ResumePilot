@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
 import java.io.ByteArrayOutputStream
 
 /**
- * AutoRPA 总调度器
+ * ResumePilot 总调度器
  * 协调 LLM "大脑" 和 RPA "手脚" 的完整工作流
  *
  * 工作模式：
@@ -29,7 +29,7 @@ import java.io.ByteArrayOutputStream
  *   3. REPLAY: 直接执行已有的 RPA 脚本（零 LLM 调用）
  *   4. HYBRID: 脚本执行 + LLM 异常处理混合
  */
-class AutoRPAOrchestrator(
+class ResumePilotOrchestrator(
     private val context: Context,
     private val accessibilityService: RPAAccessibilityService?,
     private val db: AppDatabase,

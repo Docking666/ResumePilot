@@ -23,19 +23,19 @@
         tools:ignore="ScopedStorage" />
 
     <application
-        android:name=".AutoRPAApp"
+        android:name=".ResumePilotApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="AutoRPA"
+        android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AutoRPA"
+        android:theme="@style/Theme.ResumePilot"
         tools:targetApi="34">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:theme="@style/Theme.AutoRPA">
+            android:theme="@style/Theme.ResumePilot">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

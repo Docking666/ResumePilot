@@ -14,7 +14,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 
-class AutoRPAApp : Application() {
+class ResumePilotApp : Application() {
 
     lateinit var database: AppDatabase
     lateinit var preferences: PreferencesManager
@@ -57,7 +57,7 @@ class AutoRPAApp : Application() {
     }
 
     companion object {
-        lateinit var instance: AutoRPAApp
+        lateinit var instance: ResumePilotApp
             private set
     }
 }

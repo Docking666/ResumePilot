@@ -1,6 +1,6 @@
 package com.autorpa.app.data
 
-import com.autorpa.app.AutoRPAApp
+import com.autorpa.app.ResumePilotApp
 import com.autorpa.app.data.db.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -13,7 +13,7 @@ import kotlinx.coroutines.withContext
  * 2. 提供按日/周/月/平台维度的统计数据
  * 3. 驱动 DashboardScreen 的数据展示
  */
-class StatsService(private val app: AutoRPAApp) {
+class StatsService(private val app: ResumePilotApp) {
 
     /**
      * 获取仪表盘总览数据

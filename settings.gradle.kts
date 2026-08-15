@@ -15,5 +15,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "AutoRPA"
+rootProject.name = "ResumePilot"
 include(":app")

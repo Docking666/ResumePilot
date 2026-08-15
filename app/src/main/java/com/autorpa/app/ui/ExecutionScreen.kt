@@ -21,7 +21,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.autorpa.app.AutoRPAApp
+import com.autorpa.app.ResumePilotApp
 import com.autorpa.app.adapter.PlatformTemplate
 import com.autorpa.app.adapter.WorkflowEngine
 import com.autorpa.app.data.db.TemplateEntity
@@ -46,7 +46,7 @@ import java.util.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExecutionScreen() {
-    val app = AutoRPAApp.instance
+    val app = ResumePilotApp.instance
     val scope = rememberCoroutineScope()
     var templates by remember { mutableStateOf<List<TemplateEntity>>(emptyList()) }
     var selectedTemplate by remember { mutableStateOf<TemplateEntity?>(null) }
@@ -336,7 +336,7 @@ fun ExecutionScreen() {
 // ====== 业务逻辑 ======
 
 private suspend fun executeWorkflow(
-    app: AutoRPAApp,
+    app: ResumePilotApp,
     templateEntity: TemplateEntity,
     keyword: String,
     greetingText: String,

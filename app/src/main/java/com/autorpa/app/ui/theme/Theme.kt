@@ -33,7 +33,7 @@ private val LightColorScheme = lightColorScheme(
 )
 
 @Composable
-fun AutoRPATheme(
+fun ResumePilotTheme(
     darkTheme: Boolean = true,
     content: @Composable () -> Unit
 ) {
