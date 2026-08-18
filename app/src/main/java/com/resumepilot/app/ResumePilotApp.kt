@@ -82,6 +82,25 @@ class ResumePilotApp : Application() {
         }
     }
 
+    /**
+     * 读取最近一次崩溃日志（供 UI 诊断横幅展示），无则返回 null。
+     * 日志由 [installCrashHandler] 写入 filesDir/crash_log.txt。
+     */
+    fun readLatestCrash(): String? {
+        return try {
+            val logFile = java.io.File(filesDir, "crash_log.txt")
+            if (!logFile.exists()) return null
+            val text = logFile.readText()
+            if (text.isBlank()) return null
+            // 取最后一个 "-----" 分段，即最近一次崩溃
+            text.split("-----")
+                .lastOrNull { it.trim().isNotBlank() }
+                ?.trim()
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     private fun registerPlatformAdapters() {
         val factory = PlatformAdapterFactory.getInstance()
         factory.register(BossAdapter())

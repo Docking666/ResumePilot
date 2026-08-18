@@ -67,12 +67,20 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.8.2")
 
     // Compose UI
-    implementation(platform("androidx.compose:compose-bom:2024.01.00"))
+    // 必须锁定统一的 Compose BOM。2024.01.00 (Compose 1.6.0) 内部不一致：
+    // material3 1.2.0 的 CircularProgressIndicator/LinearProgressIndicator 用到了
+    // animation-core 中较新的 KeyframeEntity.at(Int) 重载，而 1.6.0 的 animation-core
+    // 不含该方法，导致运行时 NoSuchMethodError 崩溃（点「看板/执行」等页面必崩）。
+    // 升级到 2024.06.00 (Compose 1.6.8) 修复该不一致，并显式引入 animation 防被传递依赖降级。
+    implementation(platform("androidx.compose:compose-bom:2024.06.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
+    // 显式锁定 animation-core / animation，确保与 material3 同版本（防传递依赖降级）
+    implementation("androidx.compose.animation:animation-core")
+    implementation("androidx.compose.animation:animation")
 
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.7.6")

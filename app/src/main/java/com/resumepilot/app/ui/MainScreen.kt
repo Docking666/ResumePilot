@@ -45,12 +45,22 @@ fun MainScreen() {
     val logs = remember { mutableStateListOf<ExecutionLogEntity>() }
     var selectedTab by remember { mutableIntStateOf(0) }
 
-    // 加载数据
+    // 崩溃诊断横幅：若上一次运行发生过未捕获异常，启动时展示，便于定位"点 Tab 闪退"类问题
+    var crashBanner by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
-        scripts.clear()
-        scripts.addAll(app.database.scriptDao().getAllScripts())
-        logs.clear()
-        logs.addAll(app.database.scriptDao().getRecentLogs())
+        crashBanner = app.readLatestCrash()
+    }
+
+    // 加载数据（防止数据库异常导致整个 App 崩溃）
+    LaunchedEffect(Unit) {
+        try {
+            scripts.clear()
+            scripts.addAll(app.database.scriptDao().getAllScripts())
+            logs.clear()
+            logs.addAll(app.database.scriptDao().getRecentLogs())
+        } catch (e: Throwable) {
+            android.util.Log.e("MainScreen", "加载脚本/日志失败", e)
+        }
     }
 
     Scaffold(
@@ -106,19 +116,50 @@ fun MainScreen() {
             }
         }
     ) { padding ->
-        Box(modifier = Modifier.padding(padding)) {
-            when (selectedTab) {
-                0 -> SetupGuideScreen()
-                1 -> ExecutionScreen()
-                2 -> DashboardScreen()
-                3 -> ScriptListScreen(scripts, onRefresh = {
-                    scope.launch {
-                        scripts.clear()
-                        scripts.addAll(app.database.scriptDao().getAllScripts())
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            // 崩溃诊断横幅：展示最近一次未捕获异常（便于定位"点 Tab 闪退"类问题）
+            crashBanner?.let {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "上次崩溃：$it",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
                     }
-                })
-                4 -> ResumeScreen()
-                5 -> SettingsScreen()
+                }
+            }
+            Box(modifier = Modifier.fillMaxSize()) {
+                when (selectedTab) {
+                    0 -> SetupGuideScreen()
+                    1 -> ExecutionScreen()
+                    2 -> DashboardScreen()
+                    3 -> ScriptListScreen(scripts, onRefresh = {
+                        scope.launch {
+                            scripts.clear()
+                            scripts.addAll(app.database.scriptDao().getAllScripts())
+                        }
+                    })
+                    4 -> ResumeScreen()
+                    5 -> SettingsScreen()
+                }
             }
         }
     }
