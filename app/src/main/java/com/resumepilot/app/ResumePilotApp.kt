@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.room.Room
 import com.resumepilot.app.adapter.PlatformAdapterFactory
 import com.resumepilot.app.adapter.boss.BossAdapter
+import com.resumepilot.app.adapter.generic.GenericTestAdapter
 import com.resumepilot.app.adapter.liepin.LiepinAdapter
 import com.resumepilot.app.adapter.job51.Job51Adapter
 import com.resumepilot.app.data.PreferencesManager
@@ -139,6 +140,7 @@ class ResumePilotApp : Application() {
         factory.register(BossAdapter())
         factory.register(LiepinAdapter())
         factory.register(Job51Adapter())
+        factory.register(GenericTestAdapter())
     }
 
     companion object {

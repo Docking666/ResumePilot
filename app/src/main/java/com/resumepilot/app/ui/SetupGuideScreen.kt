@@ -373,9 +373,11 @@ private fun ScreenshotGuideStep(
         }
     }
 
-    // 进入引导时尝试拉起目标 App，让引导真正针对目标平台，而不是本应用自身
-    LaunchedEffect(Unit) {
-        if (!hasLaunchedApp) {
+    // 授权成功后再拉起目标 App，让引导真正针对目标平台。
+    // 关键：必须在 MediaProjection 授权弹窗（需本应用前台）完成后再跳走，
+    // 否则授权弹窗会被目标 App 盖住，用户永远卡在"未授权→无法截图"的第一阶段。
+    LaunchedEffect(isAuthorized) {
+        if (isAuthorized && !hasLaunchedApp) {
             hasLaunchedApp = true
             val pkg = adapter?.appPackage
             if (!pkg.isNullOrBlank()) {
@@ -409,6 +411,8 @@ private fun ScreenshotGuideStep(
             onScreenshotTaken(key, cap.second)
             lastCaptureBase64 = cap.second
             captureError = null
+            // 消费后清空，避免"相同值不重新触发 LaunchedEffect"导致重复截图时无法再次翻页
+            app.guideCaptureFlow.value = null
         }
     }
 
@@ -490,7 +494,41 @@ private fun ScreenshotGuideStep(
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
         )
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // 操作流程横幅：明确"如何截图"，避免被扔进目标 App 后不知所措
+        val launchHint = if (adapter?.appPackage.isNullOrBlank()) {
+            "请手动打开任意一款 App（如「设置」或浏览器）"
+        } else {
+            "本应用会自动打开 ${adapter?.platformName ?: "目标 App"}（若未打开请手动打开）"
+        }
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(10.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+            )
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text(
+                    "采集流程（共需 ${totalPages} 页）",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    "1. $launchHint\n" +
+                    "2. 在其中按下方卡片提示进入对应页面\n" +
+                    "3. 下拉手机通知栏，点击「📸 截图本页」——此时你在目标 App 内，应用内按钮点不到，只能用通知栏按钮\n" +
+                    "4. 截图后本应用会自动保存并翻到下一页；全部完成进入 AI 分析",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
 
         // 引导卡片
         if (currentPage != null) {
