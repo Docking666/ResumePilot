@@ -194,10 +194,22 @@ class LLMClient(val config: LLMConfig) {
     }
 
     /**
+     * 构造 OpenAI 兼容接口的完整地址。
+     *
+     * 关键修复（404 根因）：设置页让用户填写的是"Base URL"（如 https://api.deepseek.com/v1），
+     * 但旧代码把它当成"完整接口地址"直接用，导致请求打到根路径而 404。
+     * 这里统一把 Base URL 拼成 .../chat/completions（若已包含则原样返回）。
+     */
+    private fun openAIEndpoint(baseUrl: String): String {
+        val base = baseUrl.ifBlank { "https://api.openai.com/v1" }.trimEnd('/')
+        return if (base.endsWith("/chat/completions")) base else "$base/chat/completions"
+    }
+
+    /**
      * OpenAI GPT-4o Vision API
      */
     private suspend fun callOpenAIVision(prompt: String, imageBase64: String): String {
-        val url = config.baseUrl.ifEmpty { "https://api.openai.com/v1/chat/completions" }
+        val url = openAIEndpoint(config.baseUrl)
         val model = config.modelName.ifEmpty { "gpt-4o" }
 
         val body = JSONObject().apply {
@@ -235,7 +247,7 @@ class LLMClient(val config: LLMConfig) {
     }
 
     private suspend fun callOpenAIText(prompt: String): String {
-        val url = config.baseUrl.ifEmpty { "https://api.openai.com/v1/chat/completions" }
+        val url = openAIEndpoint(config.baseUrl)
 
         val body = JSONObject().apply {
             put("model", config.modelName.ifEmpty { "gpt-4o" })
@@ -456,7 +468,7 @@ class LLMClient(val config: LLMConfig) {
         userMessage: String,
         screenshotBase64: String? = null
     ): String = withContext(Dispatchers.IO) {
-        val url = config.baseUrl.ifEmpty { "https://api.openai.com/v1/chat/completions" }
+        val url = openAIEndpoint(config.baseUrl)
         val model = config.modelName.ifEmpty { "gpt-4o" }
 
         val messages = JSONArray().apply {

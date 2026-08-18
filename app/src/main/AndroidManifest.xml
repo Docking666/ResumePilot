@@ -78,5 +78,14 @@
             </intent-filter>
         </receiver>
 
+        <!-- 通知栏「截图本页」按钮广播接收器 -->
+        <receiver
+            android:name=".service.CaptureActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.resumepilot.app.ACTION_CAPTURE" />
+            </intent-filter>
+        </receiver>
+
     </application>
 </manifest>

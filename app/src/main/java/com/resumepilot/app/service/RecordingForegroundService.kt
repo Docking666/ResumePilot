@@ -125,13 +125,31 @@ class RecordingForegroundService : Service() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+
+        // 通知栏「📸 截图本页」按钮：用户在目标 App（如 BOSS直聘）内时，
+        // 下拉通知栏点此按钮即可截取当前真实页面，无需切回本应用。
+        val captureIntent = Intent(this, CaptureActionReceiver::class.java).apply {
+            action = CaptureActionReceiver.ACTION_CAPTURE
+        }
+        val capturePendingIntent = PendingIntent.getBroadcast(
+            this,
+            1,
+            captureIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("ResumePilot")
-            .setContentText("自动化任务运行中…")
+            .setContentText("自动化任务运行中…（下拉可「截图本页」）")
             .setSmallIcon(android.R.drawable.ic_menu_compass)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .setContentIntent(contentIntent)
+            .addAction(
+                android.R.drawable.ic_menu_camera,
+                "📸 截图本页",
+                capturePendingIntent
+            )
             .build()
     }
 

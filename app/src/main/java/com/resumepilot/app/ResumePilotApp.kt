@@ -13,6 +13,7 @@ import com.resumepilot.app.resume.ResumeManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
 
 class ResumePilotApp : Application() {
 
@@ -27,6 +28,37 @@ class ResumePilotApp : Application() {
      */
     @Volatile
     var screenshotCapture: com.resumepilot.app.service.ScreenshotCapture? = null
+
+    /**
+     * 引导截图流程的"当前页 key"：通知栏「截图本页」需要知道自己截的是哪一页，
+     * 由 ScreenshotGuideStep 在切页时写入。
+     */
+    @Volatile
+    var currentGuidePageKey: String = ""
+
+    /**
+     * 引导截图结果回流通道：用户通过通知栏按钮（在目标 App 内）或应用内按钮完成截图后，
+     * [requestCapture] 把 (pageKey, base64) 发射到这里，ScreenshotGuideStep 监听后
+     * 把截图存入模板并翻页。用 StateFlow 而非回调，避免跨进程/跨组件传参。
+     */
+    val guideCaptureFlow = MutableStateFlow<Pair<String, String>?>(null)
+
+    /**
+     * 触发一次屏幕截图并发射到 [guideCaptureFlow]。
+     * 由通知栏「截图本页」广播或应用内按钮调用；在 IO 协程执行，避免阻塞主线程/ANR。
+     * @return 是否发起了截图（false 表示未授权或捕获器为空）
+     */
+    fun requestCapture(): Boolean {
+        val cap = screenshotCapture ?: return false
+        if (!cap.isAuthorized()) return false
+        appScope.launch(Dispatchers.IO) {
+            val b64 = cap.captureScreenshot()
+            if (b64 != null) {
+                guideCaptureFlow.emit(currentGuidePageKey to b64)
+            }
+        }
+        return true
+    }
 
     // 全局协程作用域（应用级，任务在 Activity 销毁后仍可继续执行）
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

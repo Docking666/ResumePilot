@@ -968,22 +968,29 @@ fun SettingsScreen() {
                     expanded = expanded,
                     onDismissRequest = { expanded = false }
                 ) {
-                    providers.forEach { provider ->
-                        DropdownMenuItem(
-                            text = { Text(provider.displayName) },
-                            onClick = {
-                                llmProvider = provider.displayName
-                                modelName = when (provider) {
-                                    LLMProvider.OPENAI -> "gpt-4o"
-                                    LLMProvider.ANTHROPIC -> "claude-3-5-sonnet"
-                                    LLMProvider.ALIYUN -> "qwen-vl-plus"
-                                    LLMProvider.DEEPSEEK -> "deepseek-chat"
-                                    LLMProvider.GEMINI -> "gemini-1.5-pro"
+                        providers.forEach { provider ->
+                            DropdownMenuItem(
+                                text = { Text(provider.displayName) },
+                                onClick = {
+                                    llmProvider = provider.displayName
+                                    modelName = when (provider) {
+                                        LLMProvider.OPENAI -> "gpt-4o"
+                                        LLMProvider.ANTHROPIC -> "claude-3-5-sonnet"
+                                        LLMProvider.ALIYUN -> "qwen-vl-plus"
+                                        LLMProvider.DEEPSEEK -> "deepseek-chat"
+                                        LLMProvider.GEMINI -> "gemini-1.5-pro"
+                                    }
+                                    // 选择供应商时自动填入该供应商的默认 Base URL，
+                                    // 避免用户手填根地址导致 404（代码会自动拼接 /chat/completions）
+                                    baseUrl = when (provider) {
+                                        LLMProvider.DEEPSEEK -> "https://api.deepseek.com/v1"
+                                        LLMProvider.ALIYUN -> "https://dashscope.aliyuncs.com/compatible-mode/v1"
+                                        else -> ""
+                                    }
+                                    expanded = false
                                 }
-                                expanded = false
-                            }
-                        )
-                    }
+                            )
+                        }
                 }
             }
         }
@@ -1004,7 +1011,7 @@ fun SettingsScreen() {
                 onValueChange = { baseUrl = it },
                 label = { Text("Base URL (可选)") },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("例如: https://api.openai.com/v1") }
+                placeholder = { Text("例如: https://api.deepseek.com/v1（自动拼接 /chat/completions）") }
             )
         }
 

@@ -6,6 +6,10 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import android.content.Intent
+import android.graphics.BitmapFactory
+import android.util.Base64
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,6 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -55,6 +60,13 @@ fun SetupGuideScreen() {
     val adapters = remember { com.resumepilot.app.adapter.PlatformAdapterFactory.getInstance().getAll() }
 
     // 状态
+    var hasValidKey by remember { mutableStateOf(false) }
+    var showKeyWarning by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        // 引导流程最后要用 LLM 分析截图生成模板，没有 Key 就只是空跑，提前拦截
+        hasValidKey = app.preferences.getLLMConfig().apiKey.isNotBlank()
+    }
+
     var currentStep by remember { mutableIntStateOf(0) }
     var selectedAdapter by remember { mutableStateOf<PlatformAdapter?>(null) }
     var currentPageIndex by remember { mutableIntStateOf(0) }
@@ -99,7 +111,12 @@ fun SetupGuideScreen() {
             when (currentStep) {
                 0 -> SelectPlatformStep(
                     adapters = adapters,
+                    keyWarning = showKeyWarning,
                     onSelect = { adapter ->
+                        if (!hasValidKey) {
+                            showKeyWarning = true
+                            return@onSelect
+                        }
                         selectedAdapter = adapter
                         currentStep = 1
                         currentPageIndex = 0
@@ -113,6 +130,7 @@ fun SetupGuideScreen() {
                     totalPages = selectedAdapter?.guideConfig?.pages?.size ?: 0,
                     scope = scope,
                     onScreenshotTaken = { pageKey, base64 ->
+                        capturedScreenshots.removeAll { it.first == pageKey }
                         capturedScreenshots.add(pageKey to base64)
                         val pages = selectedAdapter?.guideConfig?.pages ?: emptyList()
                         if (currentPageIndex < pages.size - 1) {
@@ -191,6 +209,7 @@ fun SetupGuideScreen() {
 @Composable
 private fun SelectPlatformStep(
     adapters: List<PlatformAdapter>,
+    keyWarning: Boolean = false,
     onSelect: (PlatformAdapter) -> Unit
 ) {
     Column(
@@ -209,7 +228,28 @@ private fun SelectPlatformStep(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
         )
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (keyWarning) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f)
+                )
+            ) {
+                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Warning, contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "请先在「设置」页配置 API Key，否则无法用 AI 分析截图生成模板",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
 
         // 平台列表
         adapters.forEach { adapter ->
@@ -288,6 +328,11 @@ private fun ScreenshotGuideStep(
     var captureError by remember { mutableStateOf<String?>(null) }
     var isAuthorized by remember { mutableStateOf(false) }
     var hasTriggeredAuth by remember { mutableStateOf(false) }
+    var hasLaunchedApp by remember { mutableStateOf(false) }
+    var appInstalled by remember { mutableStateOf(true) }
+    var lastCaptureBase64 by remember { mutableStateOf<String?>(null) }
+
+    val app = ResumePilotApp.instance
 
     // 截图捕获实例（记住，不随重组重建）
     val screenshotCapture = remember {
@@ -310,23 +355,9 @@ private fun ScreenshotGuideStep(
                 // 写入全局，供 Orchestrator / MCP ScreenshotTool / WorkflowEngine 复用同一授权会话
                 ResumePilotApp.instance.screenshotCapture = screenshotCapture
                 isAuthorized = true
+                isCapturing = false
                 captureError = null
-                // 授权成功后，立即自动截图当前页面
-                autoCapture(
-                    scope, screenshotCapture, currentPage,
-                    onStart = {
-                        isCapturing = true
-                        captureError = null
-                    },
-                    onResult = { base64 ->
-                        isCapturing = false
-                        if (base64 != null) {
-                            currentPage?.key?.let { key -> onScreenshotTaken(key, base64) }
-                        } else {
-                            captureError = "截图失败，请确保屏幕已解锁并重试"
-                        }
-                    }
-                )
+                // 不再自动截图：授权后由用户通过通知栏「截图本页」或在目标 App 内主动截取真实页面
             } else {
                 isCapturing = false
                 captureError = if (screenshotCapture.requiresForegroundService()) {
@@ -341,12 +372,48 @@ private fun ScreenshotGuideStep(
         }
     }
 
-    // 核心：自动触发授权（首次进入），以及后续页面自动截图
-    LaunchedEffect(currentPageIndex, isAuthorized, hasTriggeredAuth) {
-        if (currentPage == null) return@LaunchedEffect
+    // 进入引导时尝试拉起目标 App，让引导真正针对目标平台，而不是本应用自身
+    LaunchedEffect(Unit) {
+        if (!hasLaunchedApp) {
+            hasLaunchedApp = true
+            val pkg = adapter?.appPackage
+            if (!pkg.isNullOrBlank()) {
+                try {
+                    val intent = context.packageManager.getLaunchIntentForPackage(pkg)
+                    if (intent != null) {
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                        appInstalled = true
+                    } else {
+                        appInstalled = false
+                    }
+                } catch (e: Exception) {
+                    appInstalled = false
+                }
+            }
+        }
+    }
 
+    // 同步当前页 key 到全局，供通知栏「截图本页」按钮定位截的是哪一页
+    LaunchedEffect(currentPageIndex) {
+        ResumePilotApp.instance.currentGuidePageKey = currentPage?.key ?: ""
+    }
+
+    // 截图结果通过全局 flow 回流（通知栏按钮 / 应用内按钮走同一通道）
+    val guideCapture by app.guideCaptureFlow.collectAsState()
+    LaunchedEffect(guideCapture) {
+        val cap = guideCapture
+        val key = currentPage?.key
+        if (cap != null && key != null && cap.first == key) {
+            onScreenshotTaken(key, cap.second)
+            lastCaptureBase64 = cap.second
+            captureError = null
+        }
+    }
+
+    // 首次进入自动触发屏幕捕获授权（不再自动截图翻页，避免截到本应用界面）
+    LaunchedEffect(hasTriggeredAuth) {
         if (!isAuthorized && !hasTriggeredAuth) {
-            // 首次进入 - 先启动前台服务（Android 14 强制要求），再自动弹出授权对话框
             hasTriggeredAuth = true
             isCapturing = true
             RecordingForegroundService.start(context)
@@ -358,25 +425,27 @@ private fun ScreenshotGuideStep(
                 notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
             }
             screenCaptureLauncher.launch(screenshotCapture.createScreenCaptureIntent())
-        } else if (isAuthorized) {
-            // 已授权 - 自动截图（给 1.5s 让用户看到引导提示）
-            kotlinx.coroutines.delay(1500)
-            if (currentPageIndex == 0 || isCapturing.not()) {
-                autoCapture(
-                    scope, screenshotCapture, currentPage,
-                    onStart = {
-                        isCapturing = true
-                        captureError = null
-                    },
-                    onResult = { base64 ->
-                        isCapturing = false
-                        if (base64 != null) {
-                            currentPage?.key?.let { key -> onScreenshotTaken(key, base64) }
-                        } else {
-                            captureError = "截图失败，请确保屏幕已解锁并重试"
-                        }
-                    }
-                )
+        }
+    }
+
+    // 应用内「截图本页」按钮：截当前前台界面并发射到 guideCaptureFlow（通知栏按钮也走 requestCapture）
+    fun triggerCapture() {
+        val cap = app.screenshotCapture
+        if (cap == null || !cap.isAuthorized()) {
+            captureError = "请先授权屏幕捕获"
+            return
+        }
+        isCapturing = true
+        captureError = null
+        scope.launch(Dispatchers.IO) {
+            val b64 = cap.captureScreenshot()
+            withContext(Dispatchers.Main) {
+                isCapturing = false
+                if (b64 != null) {
+                    app.guideCaptureFlow.value = (currentPage?.key ?: "") to b64
+                } else {
+                    captureError = "截图失败，请确保屏幕已解锁后重试"
+                }
             }
         }
     }
@@ -460,7 +529,30 @@ private fun ScreenshotGuideStep(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 状态提示（截图中 / 即将自动截图 / 等待授权）
+            // 目标 App 未安装提示
+            if (!appInstalled) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f)
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Warning, contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "未检测到 ${adapter?.platformName ?: "目标 App"}（包名 ${adapter?.appPackage}），请先在应用商店安装后再继续引导",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+
+            // 状态提示（等待授权 / 已授权）
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
@@ -471,41 +563,84 @@ private fun ScreenshotGuideStep(
                 ),
                 shape = RoundedCornerShape(8.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (isCapturing || isAuthorized) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            if (isCapturing) "正在截图..." else "即将自动截图...",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    } else if (captureError != null) {
-                        Icon(Icons.Default.Error, contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(captureError!!, style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error)
-                        Spacer(Modifier.width(8.dp))
-                        // 出错后提供重试按钮
-                        TextButton(onClick = {
-                            captureError = null
-                            isCapturing = true
-                            RecordingForegroundService.start(context)
-                            screenCaptureLauncher.launch(screenshotCapture.createScreenCaptureIntent())
-                        }) {
-                            Text("重试", style = MaterialTheme.typography.bodySmall)
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (isCapturing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("正在截图...", style = MaterialTheme.typography.bodySmall)
+                        } else if (isAuthorized) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("已授权，可截图", style = MaterialTheme.typography.bodySmall)
+                        } else if (captureError != null) {
+                            Icon(Icons.Default.Error, contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(captureError!!, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error)
+                            Spacer(Modifier.width(8.dp))
+                            // 出错后提供重试按钮
+                            TextButton(onClick = {
+                                captureError = null
+                                isCapturing = true
+                                RecordingForegroundService.start(context)
+                                screenCaptureLauncher.launch(screenshotCapture.createScreenCaptureIntent())
+                            }) {
+                                Text("重试", style = MaterialTheme.typography.bodySmall)
+                            }
+                        } else {
+                            Icon(Icons.Default.Info, contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("请授权屏幕捕获以开始截图", style = MaterialTheme.typography.bodySmall)
                         }
-                    } else {
-                        Icon(Icons.Default.Info, contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("请授权屏幕捕获以开始截图", style = MaterialTheme.typography.bodySmall)
+                    }
+
+                    if (isAuthorized) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "在 ${adapter?.platformName ?: "目标 App"} 中导航到本页后，下拉通知栏点击「📸 截图本页」即可截取真实页面",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        // 展示已截取的页面，便于确认截到了正确的界面
+                        lastCaptureBase64?.let { b64 ->
+                            val bmp = remember(b64) { base64ToImageBitmap(b64) }
+                            bmp?.let {
+                                Image(
+                                    bitmap = it,
+                                    contentDescription = "已捕获的截图",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 200.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Button(
+                            onClick = { triggerCapture() },
+                            enabled = !isCapturing,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (isCapturing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text("截图中...")
+                            } else {
+                                Text("截图本页（应用内）")
+                            }
+                        }
                     }
                 }
             }
@@ -530,21 +665,14 @@ private fun ScreenshotGuideStep(
     }
 }
 
-/** 执行截图并回调 */
-private fun autoCapture(
-    scope: CoroutineScope,
-    screenshotCapture: ScreenshotCapture,
-    currentPage: GuidePage?,
-    onStart: () -> Unit,
-    onResult: (String?) -> Unit
-) {
-    if (currentPage == null) return
-    onStart()
-    scope.launch(Dispatchers.IO) {
-        val base64 = screenshotCapture.captureScreenshot()
-        withContext(Dispatchers.Main) {
-            onResult(base64)
-        }
+/** 将 base64 PNG 解码为 Compose 可用的 ImageBitmap（用于引导页展示已截取的页面） */
+private fun base64ToImageBitmap(b64: String): ImageBitmap? {
+    return try {
+        val bytes = Base64.decode(b64, Base64.DEFAULT)
+        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        bmp?.asImageBitmap()
+    } catch (e: Exception) {
+        null
     }
 }
 
