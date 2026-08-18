@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -115,12 +116,12 @@ fun SetupGuideScreen() {
                     onSelect = { adapter ->
                         if (!hasValidKey) {
                             showKeyWarning = true
-                            return@onSelect
+                        } else {
+                            selectedAdapter = adapter
+                            currentStep = 1
+                            currentPageIndex = 0
+                            capturedScreenshots = mutableListOf()
                         }
-                        selectedAdapter = adapter
-                        currentStep = 1
-                        currentPageIndex = 0
-                        capturedScreenshots = mutableListOf()
                     }
                 )
 
