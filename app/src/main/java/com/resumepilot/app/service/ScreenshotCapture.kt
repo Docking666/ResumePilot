@@ -31,8 +31,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * 实现要点：
  * - 授权成功后只创建一次 VirtualDisplay + ImageReader 并复用，避免每次截图重建导致偶发失败
- * - 使用 WindowManager.getRealMetrics 获取真实屏幕尺寸（resources.displayMetrics 可能
- *   与真实显示尺寸不一致，导致截图黑屏/残缺）
+ * - 用 context.resources.displayMetrics 读取真实屏幕尺寸（对所有 Context 类型都安全；
+ *   ApplicationContext 调用 context.display 会抛 UnsupportedOperationException）
  * - 监听 MediaProjection.Callback，系统回收投影时自动重置授权状态
  */
 class ScreenshotCapture(private val context: Context) {
@@ -62,17 +62,27 @@ class ScreenshotCapture(private val context: Context) {
     }
 
     init {
-        val metrics = DisplayMetrics()
-        val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            context.display?.getRealMetrics(metrics)
-        } else {
-            @Suppress("DEPRECATION")
-            windowManager.defaultDisplay.getRealMetrics(metrics)
+        // 注意：context 可能是 ApplicationContext（调用方传入 applicationContext）。
+        // ApplicationContext 不关联任何 display，调用 context.display 会抛
+        // UnsupportedOperationException；因此不能用 context.display，也不能依赖
+        // WindowManager.defaultDisplay（部分 ROM 上同样不可靠）。
+        // 正确做法：从 resources.displayMetrics 读取真实屏幕尺寸，对所有 Context 都安全。
+        val metrics = context.resources.displayMetrics
+        var w = metrics.widthPixels
+        var h = metrics.heightPixels
+        var d = metrics.densityDpi
+        // 极端情况下 metrics 可能为 0，回退到系统资源
+        if (w <= 0 || h <= 0) {
+            val sys = Resources.getSystem().displayMetrics
+            if (sys.widthPixels > 0 && sys.heightPixels > 0) {
+                w = sys.widthPixels
+                h = sys.heightPixels
+                d = sys.densityDpi
+            }
         }
-        displayWidth = metrics.widthPixels
-        displayHeight = metrics.heightPixels
-        displayDensity = metrics.densityDpi
+        displayWidth = w
+        displayHeight = h
+        displayDensity = d
     }
 
     /** 创建屏幕捕获授权 Intent */
