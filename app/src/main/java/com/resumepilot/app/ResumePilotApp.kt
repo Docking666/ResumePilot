@@ -39,6 +39,14 @@ class ResumePilotApp : Application() {
     var currentGuidePageKey: String = ""
 
     /**
+     * 是否处于"引导截图"模式：用于控制悬浮窗截图按钮的显隐。
+     * 进入 ScreenshotGuideStep 时置 true（同时会请求 SYSTEM_ALERT_WINDOW 权限），
+     * 离开时置 false。RecordingForegroundService 据此决定是否显示悬浮截图按钮。
+     */
+    @Volatile
+    var guideCaptureMode: Boolean = false
+
+    /**
      * 引导截图结果回流通道：用户通过通知栏按钮（在目标 App 内）或应用内按钮完成截图后，
      * [requestCapture] 把 (pageKey, base64) 发射到这里，ScreenshotGuideStep 监听后
      * 把截图存入模板并翻页。用 StateFlow 而非回调，避免跨进程/跨组件传参。

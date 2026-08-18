@@ -71,16 +71,25 @@ data class ValidationResult(
  */
 class PlatformAdapterFactory {
 
-    private val adapters = mutableMapOf<String, PlatformAdapter>()
+    // 注册顺序即展示顺序，显式维护一个列表，避免再用 Map 双 key + distinct 这种脆弱写法
+    // （空包名 "" 作 key 会污染查询，且 distinct 行为依赖 equals，容易丢适配器）。
+    private val orderList = mutableListOf<PlatformAdapter>()
+    private val byPlatformName = mutableMapOf<String, PlatformAdapter>()
+    private val byAppPackage = mutableMapOf<String, PlatformAdapter>()
 
     fun register(adapter: PlatformAdapter) {
-        adapters[adapter.platformName] = adapter
-        adapters[adapter.appPackage] = adapter
+        if (orderList.any { it.platformName == adapter.platformName }) return
+        orderList.add(adapter)
+        byPlatformName[adapter.platformName] = adapter
+        // 空包名（通用测试这类不自动拉起的适配器）跳过，避免污染按包名查询
+        if (adapter.appPackage.isNotBlank()) {
+            byAppPackage[adapter.appPackage] = adapter
+        }
     }
 
-    fun getByPlatformName(name: String): PlatformAdapter? = adapters[name]
-    fun getByAppPackage(packageName: String): PlatformAdapter? = adapters[packageName]
-    fun getAll(): List<PlatformAdapter> = adapters.values.distinct().toList()
+    fun getByPlatformName(name: String): PlatformAdapter? = byPlatformName[name]
+    fun getByAppPackage(packageName: String): PlatformAdapter? = byAppPackage[packageName]
+    fun getAll(): List<PlatformAdapter> = orderList.toList()
 
     companion object {
         @Volatile

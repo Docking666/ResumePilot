@@ -1,12 +1,14 @@
 package com.resumepilot.app.ui
 
 import android.app.Activity
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
-import android.content.Intent
 import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.foundation.Image
@@ -14,8 +16,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -216,6 +220,7 @@ private fun SelectPlatformStep(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp)
     ) {
         Text(
@@ -455,14 +460,19 @@ private fun ScreenshotGuideStep(
         }
     }
 
-    // 清理
+    // 清理：进入引导截图页开启"引导模式"（悬浮按钮据此显示），退出时关闭并释放捕获器
     DisposableEffect(Unit) {
-        onDispose { screenshotCapture.release() }
+        ResumePilotApp.instance.guideCaptureMode = true
+        onDispose {
+            ResumePilotApp.instance.guideCaptureMode = false
+            screenshotCapture.release()
+        }
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -520,7 +530,7 @@ private fun ScreenshotGuideStep(
                 Text(
                     "1. $launchHint\n" +
                     "2. 在其中按下方卡片提示进入对应页面\n" +
-                    "3. 下拉手机通知栏，点击「📸 截图本页」——此时你在目标 App 内，应用内按钮点不到，只能用通知栏按钮\n" +
+                    "3. 点击屏幕上悬浮的「📸」按钮即可截取当前真实页面（无需下拉通知栏，按钮会自动隐藏避免拍进截图）\n" +
                     "4. 截图后本应用会自动保存并翻到下一页；全部完成进入 AI 分析",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
@@ -528,7 +538,50 @@ private fun ScreenshotGuideStep(
             }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // 悬浮窗权限提示：截图按钮依赖 SYSTEM_ALERT_WINDOW，未授予时引导开启
+        val overlayGranted = Settings.canDrawOverlays(context)
+        if (isAuthorized && !overlayGranted) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f)
+                )
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text(
+                        "需要「显示在其他应用上层」权限",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        "悬浮截图按钮需要该权限才能在目标 App 上方显示。请点击下方按钮，在设置中允许后返回本应用。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            val intent = Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:${context.packageName}")
+                            ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+                            context.startActivity(intent)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("去开启悬浮窗权限")
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(20.dp))
+        } else {
+            Spacer(modifier = Modifier.height(20.dp))
+        }
 
         // 引导卡片
         if (currentPage != null) {
@@ -643,7 +696,7 @@ private fun ScreenshotGuideStep(
                     if (isAuthorized) {
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            "在 ${adapter?.platformName ?: "目标 App"} 中导航到本页后，下拉通知栏点击「📸 截图本页」即可截取真实页面",
+                            "在 ${adapter?.platformName ?: "目标 App"} 中导航到本页后，点击屏幕上的悬浮「📸」按钮即可截取当前真实页面",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                         )
@@ -677,7 +730,7 @@ private fun ScreenshotGuideStep(
                                 Spacer(Modifier.width(8.dp))
                                 Text("截图中...")
                             } else {
-                                Text("截图本页（应用内）")
+                                Text("截当前屏幕（测试管道用）")
                             }
                         }
                     }
@@ -692,7 +745,7 @@ private fun ScreenshotGuideStep(
             }
         }
 
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.height(24.dp))
 
         // 提示
         Text(
